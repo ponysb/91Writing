@@ -2166,6 +2166,7 @@ const chapters = ref([])
 const currentChapter = ref(null)
 const content = ref('')
 const isSaving = ref(false)
+const hasUnsavedChanges = ref(false)
 const showChapterDialog = ref(false)
 const editingChapter = ref(null)
 const editorRef = shallowRef()
@@ -6279,7 +6280,9 @@ const replaceFullContent = () => {
 
 // 解析AI章节响应
 const parseChapterResponse = (response) => {
-  console.log('原始AI响应:', response)
+  // 过滤thinking内容后再打印
+  const cleanResponse = apiService.removeThinkingContent(response)
+  console.log('AI响应(已过滤thinking):', cleanResponse)
   const chapters = []
   
   // 尝试多种解析策略
