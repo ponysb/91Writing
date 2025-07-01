@@ -103,7 +103,22 @@ class APIService {
         body: JSON.stringify(requestBody)
       })
 
-      const content = response.choices[0]?.message?.content || ''
+      // 处理thinking信息
+      const thinking = response.choices[0]?.message?.thinking || ''
+      if (thinking) {
+        console.log('🤔 AI Thinking (非流式):', thinking)
+      }
+      
+      let content = response.choices[0]?.message?.content || ''
+      
+      // 重置thinking日志记录
+      this._loggedThinking = new Set()
+      
+      // 提取并打印thinking内容
+      this.extractAndLogThinking(content)
+      
+      // 过滤thinking内容
+      content = this.removeThinkingContent(content)
       const usage = response.usage
       
       // 记录实际的token使用情况
@@ -150,6 +165,9 @@ class APIService {
   // 流式生成文本内容
   async generateTextStream(prompt, options = {}, onChunk = null) {
     console.log('开始流式生成，prompt:', prompt.substring(0, 100) + '...') // 调试日志
+    
+    // 重置thinking日志记录
+    this._loggedThinking = new Set()
     
     // 验证配置的完整性
     if (!this.config.apiKey || this.config.apiKey.trim() === '') {
@@ -215,6 +233,8 @@ class APIService {
     
     let fullContent = ''
     let hasError = false
+    let allRawContent = '' // 用于累积所有原始内容，包括thinking
+    let safeOutputContent = '' // 安全输出内容（确认不包含thinking）
     
     try {
       const response = await fetch(url, {
@@ -306,18 +326,40 @@ class APIService {
               
               try {
                 const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || ''
+                
+                // 处理thinking信息
+                const thinking = parsed.choices?.[0]?.delta?.thinking || ''
+                if (thinking) {
+                  console.log('🤔 AI Thinking:', thinking)
+                }
+                
+                let content = parsed.choices?.[0]?.delta?.content || ''
                 
                 if (content) {
-                  fullContent += content
-                  processedChunks++
-                  console.log('接收到内容片段:', content.length, '字符，总长度:', fullContent.length)
+                  // 累积所有原始内容
+                  allRawContent += content
                   
-                  if (onChunk) {
-                    try {
-                      onChunk(content, fullContent)
-                    } catch (chunkError) {
-                      console.error('onChunk回调错误:', chunkError)
+                  // 从累积的原始内容中提取并打印thinking
+                  this.extractAndLogThinking(allRawContent)
+                  
+                  // 获取当前所有安全内容（移除thinking后）
+                  const currentSafeContent = this.removeThinkingContent(allRawContent)
+                  
+                  // 计算新增的安全内容
+                  const newSafeContent = currentSafeContent.substring(safeOutputContent.length)
+                  
+                  if (newSafeContent) {
+                    safeOutputContent = currentSafeContent
+                    fullContent += newSafeContent
+                    processedChunks++
+                    console.log('接收到安全内容片段:', newSafeContent.length, '字符，总安全长度:', safeOutputContent.length)
+                    
+                    if (onChunk) {
+                      try {
+                        onChunk(newSafeContent, safeOutputContent)
+                      } catch (chunkError) {
+                        console.error('onChunk回调错误:', chunkError)
+                      }
                     }
                   }
                 }
@@ -356,12 +398,35 @@ class APIService {
             if (data !== '[DONE]' && data !== '') {
               try {
                 const parsed = JSON.parse(data)
-                const content = parsed.choices?.[0]?.delta?.content || ''
+                
+                // 处理thinking信息
+                const thinking = parsed.choices?.[0]?.delta?.thinking || ''
+                if (thinking) {
+                  console.log('🤔 AI Thinking (缓冲区):', thinking)
+                }
+                
+                let content = parsed.choices?.[0]?.delta?.content || ''
+                
                 if (content) {
-                  fullContent += content
-                  console.log('缓冲区内容片段:', content.length, '字符，总长度:', fullContent.length)
-                  if (onChunk) {
-                    onChunk(content, fullContent)
+                  // 累积到原始内容中
+                  allRawContent += content
+                  
+                  // 提取并打印thinking
+                  this.extractAndLogThinking(allRawContent)
+                  
+                  // 获取当前所有安全内容（移除thinking后）
+                  const currentSafeContent = this.removeThinkingContent(allRawContent)
+                  
+                  // 计算新增的安全内容
+                  const newSafeContent = currentSafeContent.substring(safeOutputContent.length)
+                  
+                  if (newSafeContent) {
+                    safeOutputContent = currentSafeContent
+                    fullContent += newSafeContent
+                    console.log('缓冲区安全内容片段:', newSafeContent.length, '字符，总安全长度:', safeOutputContent.length)
+                    if (onChunk) {
+                      onChunk(newSafeContent, safeOutputContent)
+                    }
                   }
                 }
               } catch (e) {
@@ -414,19 +479,22 @@ class APIService {
         }
       }
 
+      // 使用安全输出内容作为最终结果
+      const finalContent = safeOutputContent || this.removeThinkingContent(fullContent)
+      
       // 流式生成成功，记录token使用
-      const outputTokens = billingService.estimateTokens(fullContent)
+      const outputTokens = billingService.estimateTokens(finalContent)
       billingService.recordAPICall({
         type: options.type || 'generation',
         model: model,
         content: cleanPrompt,
-        response: fullContent,
+        response: finalContent,
         inputTokens: estimatedInputTokens,
         outputTokens: outputTokens,
         status: 'success'
       })
 
-      return fullContent
+      return finalContent
     } catch (error) {
       console.error('流式生成错误:', error)
       // 只有在发生错误时才记录失败调用
@@ -909,6 +977,37 @@ ${content}
       console.error('文章分析失败:', error)
       throw error
     }
+  }
+
+  // 提取并打印thinking内容的辅助方法
+  extractAndLogThinking(content) {
+    if (!this._loggedThinking) {
+      this._loggedThinking = new Set()
+    }
+    
+    const thinkMatches = content.match(/<think>([\s\S]*?)<\/think>/g)
+    if (thinkMatches) {
+      thinkMatches.forEach(match => {
+        const thinkContent = match.replace(/<\/?think>/g, '').trim()
+        if (thinkContent && !this._loggedThinking.has(thinkContent)) {
+          console.log('🤔 AI Thinking:', thinkContent)
+          this._loggedThinking.add(thinkContent)
+        }
+      })
+    }
+  }
+
+  // 移除thinking内容的辅助方法
+  removeThinkingContent(content) {
+    if (!content) return content
+    
+    // 移除完整的thinking块
+    let cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, '')
+    
+    // 移除未完成的thinking开头
+    cleaned = cleaned.replace(/<think>[\s\S]*$/g, '')
+    
+    return cleaned.trim()
   }
 }
 
