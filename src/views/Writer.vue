@@ -1244,27 +1244,22 @@
           </template>
           
           <el-form label-width="120px" size="default">
-            <el-row :gutter="20">
-              <el-col :span="12">
-                <el-form-item label="生成数量">
-                  <el-input-number v-model="worldGenerateConfig.count" :min="1" :max="8" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="设定类型">
-                  <div class="world-type-options">
-                    <el-checkbox v-model="worldGenerateConfig.includeGeography">地理环境</el-checkbox>
-                    <el-checkbox v-model="worldGenerateConfig.includeCulture">文化社会</el-checkbox>
-                    <el-checkbox v-model="worldGenerateConfig.includeHistory">历史背景</el-checkbox>
-                  </div>
-                </el-form-item>
-              </el-col>
-            </el-row>
+                        <el-form-item label="生成数量">
+              <el-input-number v-model="worldGenerateConfig.count" :min="1" :max="8" />
+            </el-form-item>
             
-            <el-form-item label="特殊设定">
-              <div class="special-options">
+            <el-form-item label="设定类型">
+              <div class="world-type-options">
+                <el-checkbox v-model="worldGenerateConfig.includeGeography">地理环境</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includeCulture">文化社会</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includeHistory">历史背景</el-checkbox>
                 <el-checkbox v-model="worldGenerateConfig.includeMagic">魔法体系</el-checkbox>
                 <el-checkbox v-model="worldGenerateConfig.includeTechnology">科技水平</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includePolitics">政治势力</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includeReligion">宗教信仰</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includeEconomy">经济贸易</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includeRaces">种族设定</el-checkbox>
+                <el-checkbox v-model="worldGenerateConfig.includeLanguage">语言文字</el-checkbox>
               </div>
             </el-form-item>
             
@@ -1361,7 +1356,7 @@
             v-if="!worldGenerating && generatedWorldSettings.length === 0"
             type="primary" 
             @click="generateWorldSettings"
-            :disabled="!worldGenerateConfig.includeGeography && !worldGenerateConfig.includeCulture && !worldGenerateConfig.includeHistory && !worldGenerateConfig.includeMagic && !worldGenerateConfig.includeTechnology"
+            :disabled="!worldGenerateConfig.includeGeography && !worldGenerateConfig.includeCulture && !worldGenerateConfig.includeHistory && !worldGenerateConfig.includeMagic && !worldGenerateConfig.includeTechnology && !worldGenerateConfig.includePolitics && !worldGenerateConfig.includeReligion && !worldGenerateConfig.includeEconomy && !worldGenerateConfig.includeRaces && !worldGenerateConfig.includeLanguage"
           >
             🚀 开始生成
           </el-button>
@@ -1649,6 +1644,20 @@
           </el-form-item>
         </el-form>
         
+        <!-- 自定义提示词状态显示 -->
+        <div v-if="singleChapterSelectedPrompt" class="custom-prompt-status">
+          <el-alert
+            :title="`已选择自定义提示词：${singleChapterSelectedPrompt.title}`"
+            type="success"
+            show-icon
+            :closable="false"
+          >
+            <div class="prompt-preview">
+              {{ singleChapterSelectedPrompt.description || '自定义提示词已准备就绪，点击"生成章节"按钮开始使用此提示词生成章节' }}
+            </div>
+          </el-alert>
+        </div>
+        
         <!-- 流式生成内容显示 -->
         <div v-if="isStreaming && streamingType === 'single-chapter'" class="streaming-content-area">
           <el-card shadow="never" class="streaming-card">
@@ -1669,7 +1678,7 @@
         <el-button @click="selectPromptForSingleChapter">选择提示词</el-button>
         <el-button type="primary" @click="generateSingleChapter" :loading="isGeneratingChapters">
           <el-icon><Star /></el-icon>
-          生成章节
+          {{ singleChapterSelectedPrompt ? '使用自定义提示词生成' : '生成章节' }}
         </el-button>
       </template>
     </el-dialog>
@@ -2165,6 +2174,7 @@ const currentNovel = ref(null)
 const chapters = ref([])
 const currentChapter = ref(null)
 const content = ref('')
+const hasUnsavedChanges = ref(false)
 const isSaving = ref(false)
 const showChapterDialog = ref(false)
 const editingChapter = ref(null)
@@ -2258,6 +2268,11 @@ const worldGenerateConfig = ref({
   includeHistory: true,
   includeMagic: false,
   includeTechnology: false,
+  includePolitics: false,
+  includeReligion: false,
+  includeEconomy: false,
+  includeRaces: false,
+  includeLanguage: false,
   customPrompt: ''
 })
 const worldGenerating = ref(false)
@@ -2293,6 +2308,11 @@ const batchChapterSelectedPrompt = ref(null)
 const batchChapterPromptVariables = ref({})
 const batchChapterFinalPrompt = ref('')
 const activePromptCollapse = ref(['promptContent']) // 默认展开提示词内容
+
+// 单章生成选中的提示词
+const singleChapterSelectedPrompt = ref(null)
+const singleChapterPromptVariables = ref({})
+const singleChapterFinalPrompt = ref('')
 
 // AI优化表单
 const aiOptimizeForm = ref({
@@ -2606,7 +2626,21 @@ const generateChapters = async () => {
     // 构建提示词
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 章节生成任务 ===
@@ -3265,6 +3299,15 @@ const selectPrompt = (prompt) => {
     }, 50)
   }
   
+  // 如果是单章生成，自动填充单章变量
+  if (selectedPromptCategory.value === 'outline' && showAISingleChapterDialog.value) {
+    console.log('selectPrompt中检测到单章生成，调用autoFillSingleChapterVariables')
+    // 延迟一下确保变量提取完成
+    setTimeout(() => {
+      autoFillSingleChapterVariables()
+    }, 50)
+  }
+  
   generateFinalPrompt()
 }
 
@@ -3506,6 +3549,32 @@ const useSelectedPrompt = () => {
     worldSettingFinalPrompt.value = finalPrompt.value
     showPromptDialog.value = false
     ElMessage.success('已选择世界观生成提示词')
+    return
+  }
+  
+  // 判断是否是单章生成
+  if (selectedPromptCategory.value === 'outline' && showAISingleChapterDialog.value) {
+    // 单章生成提示词 - 保存提示词信息，不立即生成
+    autoFillSingleChapterVariables()
+    
+    setTimeout(() => {
+      generateFinalPrompt()
+      
+      singleChapterSelectedPrompt.value = selectedPrompt.value
+      singleChapterPromptVariables.value = { ...promptVariables.value }
+      singleChapterFinalPrompt.value = finalPrompt.value
+      
+      console.log('保存单章提示词信息:', {
+        提示词标题: selectedPrompt.value.title,
+        章节标题: aiSingleChapterForm.value.title,
+        情节要求: aiSingleChapterForm.value.plotRequirement,
+        最终提示词长度: finalPrompt.value.length
+      })
+      
+      showPromptDialog.value = false
+      ElMessage.success('已选择单章生成提示词，请点击"生成章节"按钮开始生成')
+    }, 100)
+    
     return
   }
 
@@ -3981,7 +4050,21 @@ const batchGenerateCharacters = async () => {
     if (batchCharacterSelectedPrompt.value && batchCharacterFinalPrompt.value) {
       finalPrompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+        const genreMap = {
+          'fantasy': '玄幻小说',
+          'urban': '都市言情',
+          'historical': '历史架空',
+          'martial': '武侠修仙',
+          'science': '科幻未来',
+          'romance': '现代言情',
+          'mystery': '悬疑推理',
+          'adventure': '冒险奇幻',
+          'horror': '恐怖惊悚',
+          'general': '通用小说'
+        }
+        return genreMap[currentNovel.value?.genre] || '通用小说'
+      })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 角色生成要求 ===
@@ -3998,7 +4081,21 @@ ${batchGenerateConfig.value.customPrompt ? `额外要求：${batchGenerateConfig
       // 使用默认提示词逻辑
       finalPrompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+        const genreMap = {
+          'fantasy': '玄幻小说',
+          'urban': '都市言情',
+          'historical': '历史架空',
+          'martial': '武侠修仙',
+          'science': '科幻未来',
+          'romance': '现代言情',
+          'mystery': '悬疑推理',
+          'adventure': '冒险奇幻',
+          'horror': '恐怖惊悚',
+          'general': '通用小说'
+        }
+        return genreMap[currentNovel.value?.genre] || '通用小说'
+      })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 角色生成任务 ===
@@ -4522,6 +4619,27 @@ const openWorldGenerateDialog = () => {
   generatedWorldSettings.value = []
 }
 
+// 将英文类型编码转换为中文
+const getChineseGenre = (englishGenre) => {
+  const genreMap = {
+    'fantasy': '玄幻修仙',
+    'urban': '都市现代',
+    'scifi': '科幻未来', 
+    'historical': '历史古代',
+    'mystery': '悬疑推理',
+    'wuxia': '武侠江湖',
+    'western-fantasy': '西方奇幻',
+    'apocalypse': '末世灾难',
+    'romance': '言情小说',
+    'military': '军事战争',
+    'game': '游戏竞技',
+    'business': '商战职场'
+  }
+  return genreMap[englishGenre] || '通用小说'
+}
+
+
+
 // AI生成世界观设定
 const generateWorldSettings = async () => {
   if (!checkApiAndBalance()) return
@@ -4539,7 +4657,7 @@ const generateWorldSettings = async () => {
     if (worldSettingSelectedPrompt.value && worldSettingFinalPrompt.value) {
       finalPrompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${getChineseGenre(currentNovel.value?.genre)}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 世界观生成要求 ===
@@ -4555,10 +4673,15 @@ ${worldSettingFinalPrompt.value}
       if (worldGenerateConfig.value.includeHistory) includeTypes.push('历史背景')
       if (worldGenerateConfig.value.includeMagic) includeTypes.push('魔法体系')
       if (worldGenerateConfig.value.includeTechnology) includeTypes.push('科技水平')
+      if (worldGenerateConfig.value.includePolitics) includeTypes.push('政治势力')
+      if (worldGenerateConfig.value.includeReligion) includeTypes.push('宗教信仰')
+      if (worldGenerateConfig.value.includeEconomy) includeTypes.push('经济贸易')
+      if (worldGenerateConfig.value.includeRaces) includeTypes.push('种族设定')
+      if (worldGenerateConfig.value.includeLanguage) includeTypes.push('语言文字')
       
       finalPrompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${getChineseGenre(currentNovel.value?.genre)}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 世界观生成任务 ===
@@ -4850,7 +4973,21 @@ const generateWorldSettingAI = async () => {
     
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 世界观设定生成任务 ===
@@ -4910,7 +5047,21 @@ const generateChaptersWithPrompt = async (customPrompt) => {
     // 在自定义提示词前添加小说基本信息
     const promptWithNovelInfo = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 章节生成要求 ===
@@ -4986,7 +5137,21 @@ const generateContentWithPrompt = async (customPrompt) => {
     // 构建完整的提示词，包含小说信息、配置和自定义提示词
     let promptWithNovelInfo = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 当前章节信息 ===
@@ -5233,7 +5398,21 @@ const optimizeTextWithPrompt = async (customPrompt = null) => {
     // 在自定义提示词前添加小说基本信息
     const promptWithNovelInfo = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 当前章节信息 ===
@@ -5473,7 +5652,21 @@ const continueWritingWithPrompt = async (customPrompt) => {
     // 在自定义提示词前添加完整的配置信息
     let promptWithNovelInfo = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 当前章节信息 ===
@@ -5606,7 +5799,21 @@ const generateCharacterWithPrompt = async (customPrompt) => {
     // 在自定义提示词前添加小说基本信息
     const promptWithNovelInfo = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 角色基本设定 ===
@@ -5701,7 +5908,21 @@ const generateChapterOutline = async () => {
     
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 章节大纲生成任务 ===
@@ -5806,7 +6027,21 @@ const continueWriting = async () => {
     
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 当前章节信息 ===
@@ -6013,7 +6248,21 @@ const startNewContinue = async () => {
     // 构建续写提示词
     let prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 当前章节信息 ===
@@ -6918,7 +7167,21 @@ const generateCharacterAI = async () => {
   try {
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${(() => {
+      const genreMap = {
+        'fantasy': '玄幻小说',
+        'urban': '都市言情',
+        'historical': '历史架空',
+        'martial': '武侠修仙',
+        'science': '科幻未来',
+        'romance': '现代言情',
+        'mystery': '悬疑推理',
+        'adventure': '冒险奇幻',
+        'horror': '恐怖惊悚',
+        'general': '通用小说'
+      }
+      return genreMap[currentNovel.value?.genre] || '通用小说'
+    })()}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 角色生成任务 ===
@@ -7531,7 +7794,7 @@ const autoFillWorldSettingVariables = () => {
   
   // 自动填充基本信息
   worldSettingPromptVariables.value['小说标题'] = currentNovel.value?.title || '未命名小说'
-  worldSettingPromptVariables.value['小说类型'] = currentNovel.value?.genre || '现代'
+  worldSettingPromptVariables.value['小说类型'] = getChineseGenre(currentNovel.value?.genre)
   worldSettingPromptVariables.value['小说简介'] = currentNovel.value?.description || '暂无简介'
   worldSettingPromptVariables.value['生成数量'] = worldGenerateConfig.value.count.toString()
   
@@ -7542,6 +7805,11 @@ const autoFillWorldSettingVariables = () => {
   if (worldGenerateConfig.value.includeHistory) settingTypes.push('历史背景')
   if (worldGenerateConfig.value.includeMagic) settingTypes.push('魔法体系')
   if (worldGenerateConfig.value.includeTechnology) settingTypes.push('科技水平')
+  if (worldGenerateConfig.value.includePolitics) settingTypes.push('政治势力')
+  if (worldGenerateConfig.value.includeReligion) settingTypes.push('宗教信仰')
+  if (worldGenerateConfig.value.includeEconomy) settingTypes.push('经济贸易')
+  if (worldGenerateConfig.value.includeRaces) settingTypes.push('种族设定')
+  if (worldGenerateConfig.value.includeLanguage) settingTypes.push('语言文字')
   worldSettingPromptVariables.value['设定类型'] = settingTypes.join('、')
   
   // 特殊要求
@@ -7684,7 +7952,7 @@ const generateChapterContentWithDialog = async () => {
   
   try {
     await generateContentWithPrompt(finalPrompt.value)
-    ElMessage.success('章节内容生成完成')
+    // 成功消息已在generateContentWithPrompt函数内部显示，这里不再重复显示
   } catch (error) {
     console.error('生成失败:', error)
     ElMessage.error('生成失败: ' + error.message)
@@ -7728,6 +7996,10 @@ const resetAISingleChapterDialog = () => {
     plotRequirement: '',
     template: 'general'
   }
+  // 重置自定义提示词
+  singleChapterSelectedPrompt.value = null
+  singleChapterPromptVariables.value = {}
+  singleChapterFinalPrompt.value = ''
   streamingContent.value = ''
   isStreaming.value = false
 }
@@ -7772,34 +8044,46 @@ const generateSingleChapter = async () => {
   streamingContent.value = ''
   
   try {
+    // 检查是否有选中的自定义提示词
+    if (singleChapterSelectedPrompt.value && singleChapterFinalPrompt.value) {
+      console.log('使用自定义提示词生成单章')
+      await generateSingleChapterWithPrompt(singleChapterFinalPrompt.value)
+      return
+    }
+    
+    // 使用默认模板，确保包含用户填写的所有信息
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${getChineseGenre(currentNovel.value?.genre)}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
-=== 章节生成任务 ===
-请为上述小说生成一个新的章节大纲。
+=== 单章生成任务 ===
+【重要提醒】：请只生成一个章节的大纲，不要生成多个章节！
 
-章节标题：${aiSingleChapterForm.value.title}
-情节要求：${aiSingleChapterForm.value.plotRequirement || '请根据章节标题合理发展'}
-模板类型：${getTemplateDescription(aiSingleChapterForm.value.template)}
+目标章节信息：
+- 章节标题：${aiSingleChapterForm.value.title}
+- 情节要求：${aiSingleChapterForm.value.plotRequirement || '请根据章节标题合理发展'}
+- 模板类型：${getTemplateDescription(aiSingleChapterForm.value.template)}
+- 章节序号：第${chapters.value.length + 1}章
 
 已有章节概况：
 ${chapters.value.map((ch, idx) => `第${idx + 1}章：${ch.title} - ${ch.description || '暂无描述'}`).join('\n')}
 
-要求：
-1. 生成第${chapters.value.length + 1}章的详细大纲
-2. 与前文保持逻辑连贯性
-3. 推进主线剧情发展
-4. 包含具体的情节要点
+【核心要求】：
+1. 只生成一个章节（第${chapters.value.length + 1}章）的详细大纲
+2. 使用用户指定的章节标题：${aiSingleChapterForm.value.title}
+3. 严格遵循用户的情节要求：${aiSingleChapterForm.value.plotRequirement || '按章节标题合理发展'}
+4. 与前文保持逻辑连贯性，推进主线剧情发展
+5. 包含具体的情节要点、人物发展、重要事件等
+6. 不要生成多个章节，只生成一个章节的内容
 
-请按以下格式返回：
+请严格按照以下格式返回（只返回一个章节）：
 大纲：[详细的章节内容描述，包含主要情节、人物发展、重要事件等]`
 
     console.log('开始AI生成单章大纲:', prompt)
     
     const aiResponse = await apiService.generateTextStream(prompt, {
-      maxTokens: null, // 移除token限制
+      maxTokens: null,
       temperature: 0.8,
       type: 'outline'
     }, (chunk, fullContent) => {
@@ -7879,18 +8163,19 @@ const generateBatchChapters = async () => {
     
     const prompt = `=== 小说基本信息 ===
 小说标题：${currentNovel.value?.title || '未命名小说'}
-小说类型：${currentNovel.value?.genre || '通用'}
+小说类型：${getChineseGenre(currentNovel.value?.genre)}
 小说简介：${currentNovel.value?.description || '暂无简介'}
 
 === 章节生成任务 ===
 请为上述小说生成${count}个章节大纲。
 
-要求：
-- 必须生成${count}个章节，不多不少
-- 情节要求：${plotRequirement || '请根据小说主题合理发展'}
+【用户具体要求】：
+- 生成章节数量：${count}个章节（不多不少）
+- 用户情节要求：${plotRequirement || '请根据小说主题合理发展'}
 - 模板类型：${getTemplateDescription(template)}
 - 每个章节包含：标题、详细大纲描述
 - 章节之间要有逻辑连贯性
+- 严格遵循用户的情节要求，围绕用户指定的情节发展
 
 已有章节：${chapters.value.length}个
 
@@ -8061,6 +8346,86 @@ const selectPromptForSingleChapter = () => {
   showPromptDialog.value = true
 }
 
+// 使用自定义提示词生成单章
+const generateSingleChapterWithPrompt = async (customPrompt) => {
+  if (!checkApiAndBalance()) return
+  
+  isGeneratingChapters.value = true
+  isStreaming.value = true
+  streamingType.value = 'single-chapter'
+  streamingContent.value = ''
+  
+  try {
+    // 在自定义提示词中确保包含用户填写的基本信息
+    const promptWithUserInput = `=== 用户输入信息 ===
+章节标题：${aiSingleChapterForm.value.title}
+情节要求：${aiSingleChapterForm.value.plotRequirement || '请根据章节标题合理发展'}
+模板类型：${getTemplateDescription(aiSingleChapterForm.value.template)}
+
+=== 小说基本信息 ===
+小说标题：${currentNovel.value?.title || '未命名小说'}
+小说类型：${getChineseGenre(currentNovel.value?.genre)}
+小说简介：${currentNovel.value?.description || '暂无简介'}
+
+=== 已有章节概况 ===
+${chapters.value.map((ch, idx) => `第${idx + 1}章：${ch.title} - ${ch.description || '暂无描述'}`).join('\n')}
+
+=== 基于以上信息，请按照以下要求生成章节 ===
+${customPrompt}
+
+=== 重要约束 ===
+【关键】：请只生成一个章节的大纲，不要生成多个章节！
+
+1. 只生成一个章节（第${chapters.value.length + 1}章）的详细大纲
+2. 必须使用用户指定的章节标题：${aiSingleChapterForm.value.title}
+3. 必须遵循用户的情节要求：${aiSingleChapterForm.value.plotRequirement || '按章节标题合理发展'}
+4. 与已有章节保持逻辑连贯性，推进主线剧情发展
+5. 包含具体的情节要点、人物发展、重要事件等
+6. 不要生成多个章节，无论提示词中是否提到"10章"等内容，都只生成一个章节
+
+请严格按照以下格式返回（只返回一个章节）：
+大纲：[详细的章节内容描述，包含主要情节、人物发展、重要事件等]`
+
+    console.log('使用自定义提示词生成单章:', promptWithUserInput.substring(0, 300) + '...')
+    
+    const aiResponse = await apiService.generateTextStream(promptWithUserInput, {
+      maxTokens: null,
+      temperature: 0.8,
+      type: 'outline'
+    }, (chunk, fullContent) => {
+      streamingContent.value = fullContent
+    })
+    
+    if (!aiResponse.trim()) {
+      throw new Error('AI返回内容为空')
+    }
+    
+    // 创建新章节
+    const newChapter = {
+      id: Date.now(),
+      title: aiSingleChapterForm.value.title,
+      description: aiResponse.replace(/^大纲：/, '').trim(),
+      content: '',
+      wordCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      status: 'draft'
+    }
+    
+    chapters.value.push(newChapter)
+    showAISingleChapterDialog.value = false
+    ElMessage.success('使用自定义提示词生成单章成功')
+    saveNovelData()
+  } catch (error) {
+    console.error('使用自定义提示词生成单章失败:', error)
+    ElMessage.error(`单章生成失败: ${error.message}`)
+  } finally {
+    isGeneratingChapters.value = false
+    isStreaming.value = false
+    streamingContent.value = ''
+  }
+}
+
 const selectPromptForBatchChapter = () => {
   console.log('打开批量章节提示词选择对话框')
   console.log('当前章节数量:', chapters.value.length)
@@ -8089,7 +8454,7 @@ const autoFillBatchChapterVariables = () => {
   
   // 自动填充基本信息
   promptVariables.value['小说标题'] = currentNovel.value?.title || '未命名小说'
-  promptVariables.value['小说类型'] = currentNovel.value?.genre || '通用'
+  promptVariables.value['小说类型'] = getChineseGenre(currentNovel.value?.genre)
   promptVariables.value['小说简介'] = currentNovel.value?.description || '暂无简介'
   promptVariables.value['生成章节数量'] = aiBatchChapterForm.value.count.toString()
   promptVariables.value['情节要求'] = aiBatchChapterForm.value.plotRequirement || '请根据小说主题合理发展'
@@ -8108,11 +8473,50 @@ const autoFillBatchChapterVariables = () => {
   generateFinalPrompt()
 }
 
+// 自动填充单章变量
+const autoFillSingleChapterVariables = () => {
+  if (!selectedPrompt.value) {
+    console.log('autoFillSingleChapterVariables: 没有选中的提示词')
+    return
+  }
+  
+  console.log('开始自动填充单章变量')
+  
+  // 自动填充基本信息
+  promptVariables.value['小说标题'] = currentNovel.value?.title || '未命名小说'
+  promptVariables.value['小说类型'] = getChineseGenre(currentNovel.value?.genre)
+  promptVariables.value['小说简介'] = currentNovel.value?.description || '暂无简介'
+  promptVariables.value['章节标题'] = aiSingleChapterForm.value.title || ''
+  promptVariables.value['情节要求'] = aiSingleChapterForm.value.plotRequirement || '请根据章节标题合理发展'
+  promptVariables.value['模板类型'] = getTemplateDescription(aiSingleChapterForm.value.template)
+  
+  // 填充已有章节信息
+  const chaptersDetail = getRecentChaptersDetail()
+  promptVariables.value['已有章节'] = chaptersDetail
+  
+  console.log('单章变量填充完成:', {
+    小说标题: promptVariables.value['小说标题'],
+    章节标题: promptVariables.value['章节标题'],
+    情节要求: promptVariables.value['情节要求'],
+    变量数量: Object.keys(promptVariables.value).length
+  })
+  
+  generateFinalPrompt()
+}
+
 // 监听批量章节表单变化，自动更新提示词变量
 watch(() => aiBatchChapterForm.value, () => {
   if (showAIBatchChapterDialog.value && selectedPrompt.value && selectedPromptCategory.value === 'outline') {
     console.log('批量章节表单变化，重新填充提示词变量')
     autoFillBatchChapterVariables()
+  }
+}, { deep: true })
+
+// 监听单章表单变化，自动更新提示词变量
+watch(() => aiSingleChapterForm.value, () => {
+  if (showAISingleChapterDialog.value && selectedPrompt.value && selectedPromptCategory.value === 'outline') {
+    console.log('单章表单变化，重新填充提示词变量')
+    autoFillSingleChapterVariables()
   }
 }, { deep: true })
 
@@ -8151,11 +8555,21 @@ const generateBatchChaptersWithPrompt = async (customPrompt) => {
     // 获取前5章详细信息
     const recentChaptersDetail = getRecentChaptersDetail()
     
-    // 在自定义提示词前面添加前5章信息，确保AI能看到
-    const promptWithChapters = `=== 前文章节信息（重要参考） ===
+    // 在自定义提示词前面添加用户输入和前文信息
+    const promptWithChapters = `=== 用户输入信息 ===
+生成数量：${count}个章节
+用户情节要求：${plotRequirement || '请根据小说主题合理发展'}
+模板类型：${getTemplateDescription(template)}
+
+=== 小说基本信息 ===
+小说标题：${currentNovel.value?.title || '未命名小说'}
+小说类型：${getChineseGenre(currentNovel.value?.genre)}
+小说简介：${currentNovel.value?.description || '暂无简介'}
+
+=== 前文章节信息（重要参考） ===
 ${recentChaptersDetail}
 
-=== 基于以上前文信息，请按照以下要求生成新章节 ===
+=== 基于以上信息，请按照以下要求生成新章节 ===
 ${customPrompt}`
     
     console.log('添加前5章信息后的提示词长度:', promptWithChapters.length)
@@ -8188,6 +8602,7 @@ ${customPrompt}`
 6. 不要生成少于${count}个章节
 7. 标题要简洁有吸引力
 8. 大纲要详细具体，包含具体的情节发展
+9. 严格遵循用户的情节要求：${plotRequirement || '请根据小说主题合理发展'}
 
 请现在开始生成${count}个章节大纲：`
 
@@ -10310,11 +10725,18 @@ ${customPrompt}`
   overflow-y: auto;
 }
 
-.world-type-options,
-.special-options {
+.world-type-options {
   display: flex;
-  gap: 16px;
   flex-wrap: wrap;
+  gap: 8px 16px;
+  margin-top: 8px;
+  align-items: center;
+}
+
+.world-type-options .el-checkbox {
+  margin: 0;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 .generated-settings-list {

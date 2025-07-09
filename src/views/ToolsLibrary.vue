@@ -198,7 +198,6 @@
             {{ generating ? '生成中...' : '生成内容' }}
           </el-button>
           <el-button @click="clearForm" :disabled="generating">
-            <el-icon><Refresh /></el-icon>
             清空
           </el-button>
         </div>
@@ -232,10 +231,6 @@
               <el-icon><DocumentAdd /></el-icon>
               保存到本地
             </el-button>
-            <el-button @click="saveToLibrary" :disabled="!generatedContent">
-              <el-icon><FolderAdd /></el-icon>
-              保存到素材库
-            </el-button>
           </div>
         </div>
       </div>
@@ -246,7 +241,7 @@
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, Refresh, CopyDocument, DocumentAdd, FolderAdd } from '@element-plus/icons-vue'
+import { MagicStick, Refresh, CopyDocument, DocumentAdd } from '@element-plus/icons-vue'
 import { useNovelStore } from '@/stores/novel'
 
 const novelStore = useNovelStore()
@@ -976,48 +971,7 @@ ${generatedContent.value}
   }
 }
 
-const saveToLibrary = () => {
-  if (!generatedContent.value) {
-    ElMessage.warning('没有可保存的内容')
-    return
-  }
-  
-  ElMessageBox.confirm(
-    '确定要将此内容保存到素材库吗？',
-    '保存到素材库',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'info'
-    }
-  ).then(() => {
-    try {
-      // 保存到素材库（语料库）
-      const libraryItem = {
-        title: `${currentTool.value.title} - ${new Date().toLocaleDateString()}`,
-        content: generatedContent.value,
-        type: currentToolType.value,
-        createdAt: new Date().toISOString(),
-        source: 'tool_generator'
-      }
-      
-      // 添加到小说store的语料库
-      novelStore.addCorpus(generatedContent.value)
-      
-      // 也可以保存到localStorage以便持久化
-      const savedLibrary = JSON.parse(localStorage.getItem('aiToolsLibrary') || '[]')
-      savedLibrary.push(libraryItem)
-      localStorage.setItem('aiToolsLibrary', JSON.stringify(savedLibrary))
-      
-      ElMessage.success('内容已保存到素材库')
-    } catch (error) {
-      console.error('保存到素材库失败:', error)
-      ElMessage.error('保存到素材库失败')
-    }
-  }).catch(() => {
-         // 用户取消
-   })
-}
+
 
 // 加载提示词数据
 const loadPrompts = () => {
@@ -1261,4 +1215,4 @@ onMounted(() => {
     max-width: 200px;
   }
 }
-</style> 
+</style>

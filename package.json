@@ -1,6 +1,6 @@
 {
   "name": "ai-novel-generator",
-  "version": "0.4.0",
+  "version": "0.7.0",
   "description": "AI小说写作工具",
   "type": "module",
   "scripts": {
