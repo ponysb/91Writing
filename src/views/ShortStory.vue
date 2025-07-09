@@ -1,253 +1,414 @@
 <template>
-  <div class="short-story">
-    
-    <!-- 左右分栏布局 -->
-    <div class="story-workspace">
-      <!-- 左侧配置面板 -->
-      <div class="config-panel">
-                <div class="panel-header">
-          <div class="header-title-row">
-            <h3>创作配置</h3>
-          </div>
-          <div class="header-actions-row">
-            <div class="secondary-actions">
-              <el-button 
-                size="small"
-                text
-                type="warning"
-                @click="showConfigManager = true"
-                title="管理配置选项"
-              >
-                <el-icon><Setting /></el-icon>
-                配置管理
-              </el-button>
-              <el-button 
-                size="small"
-                text
-                type="info"
-                @click="resetConfig"
-                title="重置所有配置"
-              >
-                <el-icon><Refresh /></el-icon>
+  <div class="short-story-page">
+    <!-- 顶部标签栏 -->
+    <div class="page-tabs">
+      <el-tabs v-model="activeTab" @tab-click="handleTabClick">
+        <el-tab-pane label="📝 短文写作" name="article"></el-tab-pane>
+        <el-tab-pane label="📖 短篇小说" name="story"></el-tab-pane>
+      </el-tabs>
+    </div>
+
+    <!-- 主要内容区域 -->
+    <div class="page-content">
+      <!-- 短文写作模块 -->
+      <div v-show="activeTab === 'article'" class="workspace">
+        <div class="workspace-layout">
+          <!-- 左侧配置面板 -->
+          <div class="config-sidebar">
+            <div class="config-header">
+              <h3>📝 短文配置</h3>
+              <el-button size="small" text @click="resetArticleConfig">
                 重置
               </el-button>
             </div>
-            <div class="primary-action">
-              <el-button 
-                type="primary" 
-                size="small" 
-                @click="generateStory" 
-                :loading="generating"
-                :disabled="!isConfigValid"
-                style="width: 100%;"
-              >
-                <el-icon><MagicStick /></el-icon>
-                {{ generating ? '生成中...' : '生成小说' }}
+            
+            <!-- 生成按钮 -->
+            <el-button 
+              type="primary" 
+              size="default"
+              @click="generateArticle" 
+              :loading="generatingArticle"
+              :disabled="!isArticleConfigValid"
+              class="generate-btn"
+            >
+              <el-icon><MagicStick /></el-icon>
+              {{ generatingArticle ? '生成中...' : '生成短文' }}
+            </el-button>
+            
+            <!-- 配置表单 -->
+            <div class="config-form">
+
+<!-- 必填项提示 -->
+            <div v-if="!isArticleConfigValid" class="validation-tip">
+              <el-icon><InfoFilled /></el-icon>
+              <span>还需填写：
+                <span v-if="!articleData.title">标题</span>
+                <span v-if="!articleData.title && !articleData.prompt.trim()">、</span>
+                <span v-if="!articleData.prompt.trim()">提示词</span>
+              </span>
+            </div>
+
+
+              <!-- 标题 -->
+              <div class="form-item">
+                <label>文章标题</label>
+                <el-input 
+                  v-model="articleData.title" 
+                  placeholder="请输入文章标题"
+                />
+              </div>
+
+              <!-- 字数和文风 -->
+              <div class="form-row">
+                <div class="form-item">
+                  <label>字数</label>
+                  <el-input-number 
+                    v-model="articleData.wordCount" 
+                    :min="200" 
+                    :max="5000" 
+                    :step="100"
+                    style="width: 100%"
+                  />
+                </div>
+                <div class="form-item">
+                  <div class="item-header">
+                    <label>文风</label>
+                    <el-button size="small" text @click="showWritingStyleManager = true">
+                      <el-icon><Setting /></el-icon>设置文风
+                    </el-button>
+                  </div>
+                  <el-select v-model="articleData.style" placeholder="选择文风" style="width: 100%">
+                    <el-option v-for="style in customWritingStyles" :key="style.value" :label="style.label" :value="style.value" />
+                  </el-select>
+                </div>
+              </div>
+
+              <!-- 提示词 -->
+              <div class="form-item">
+                <div class="item-header">
+                  <label>创作提示词</label>
+                  <el-button size="small" text @click="showArticlePromptSelector = true">
+                    <el-icon><List /></el-icon>选择模板
+                  </el-button>
+                </div>
+                
+                <div v-if="selectedArticlePromptTemplate" class="selected-template">
+                  <el-tag type="info" size="small">{{ selectedArticlePromptTemplate.title }}</el-tag>
+                  <el-button size="small" text @click="clearArticleSelectedTemplate">清除</el-button>
+                </div>
+                
+                <el-input
+                  v-model="articleData.prompt"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="描述您想要创作的短文内容、主题、风格等要求..."
+                />
+              </div>
+
+              <!-- 参考文章 -->
+              <div class="form-item">
+                <div class="item-header">
+                  <label>参考文章（可选）</label>
+                  <el-button size="small" text type="primary" @click="addReferenceArticle">
+                    <el-icon><Plus /></el-icon>添加
+                  </el-button>
+                </div>
+                
+                <div v-if="articleData.references.length > 0" class="reference-list">
+                  <div v-for="(ref, index) in articleData.references" :key="index" class="reference-item">
+                    <div class="ref-header">
+                      <span>参考 {{ index + 1 }}</span>
+                      <el-button size="small" text @click="removeReferenceArticle(index)">删除</el-button>
+                    </div>
+                    <el-input v-model="ref.title" placeholder="标题" size="small" style="margin-bottom: 6px" />
+                    <el-input v-model="ref.content" type="textarea" :rows="2" placeholder="内容要点..." />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 右侧编辑器 -->
+          <div class="editor-main">
+            <div class="editor-header">
+              <div class="editor-title">
+                <span>{{ articleData.title || '短文编辑器' }}</span>
+                <span class="word-count">{{ articleWordCount }} 字</span>
+              </div>
+              <div class="editor-actions">
+                <el-button size="small" @click="copyArticleContent">
+                  <el-icon><DocumentCopy /></el-icon>复制
+                </el-button>
+                <el-button size="small" @click="saveArticle">
+                  <el-icon><Download /></el-icon>保存
+                </el-button>
+                <el-button size="small" @click="clearArticleContent">
+                  <el-icon><Delete /></el-icon>清空
+                </el-button>
+              </div>
+            </div>
+            
+            <div class="editor-content">
+              <div v-if="generatingArticle" class="generating-overlay">
+                <div class="generating-header">
+                  <span>AI正在生成短文...</span>
+                  <el-button size="small" type="danger" text @click="stopArticleGeneration">停止生成</el-button>
+                </div>
+                <div class="streaming-content">{{ articleStreamingContent }}</div>
+              </div>
+              
+              <div v-else class="editor-wrapper">
+                <Toolbar
+                  :editor="articleEditorRef"
+                  :defaultConfig="articleToolbarConfig"
+                  mode="default"
+                />
+                <Editor
+                  v-model="articleContent"
+                  :defaultConfig="articleEditorConfig"
+                  mode="default"
+                  @onCreated="handleArticleEditorCreated"
+                  @onChange="onArticleEditorChange"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 文风管理弹窗 -->
+      <el-dialog v-model="showWritingStyleManager" title="文风配置管理" width="800px" class="writing-style-dialog">
+        <div class="writing-style-container">
+          <div class="style-header">
+            <h4>文风配置</h4>
+            <el-button type="primary" size="small" @click="addWritingStyle">
+              <el-icon><Plus /></el-icon>添加文风
+            </el-button>
+          </div>
+          
+          <div class="style-list">
+            <div v-for="(style, index) in configData.writingStyles" :key="index" class="style-item-row">
+              <el-input v-model="style.label" placeholder="显示名称" class="style-input" />
+              <el-input v-model="style.value" placeholder="值（英文）" class="style-input" />
+              <el-input v-model="style.prompt" placeholder="文风提示词" class="style-input style-prompt-input" />
+              <el-button type="danger" size="small" text @click="removeWritingStyle(index)">
+                删除
               </el-button>
             </div>
           </div>
-          <!-- 必填项提示 -->
-          <div v-if="!isConfigValid" class="required-items-tip">
-            <span class="tip-label">缺少必填项：</span>
-            <span class="missing-items">
-              <span v-if="!storyData.title" class="missing-item">小说标题</span>
-              <span v-if="!storyData.protagonist.name" class="missing-item">主角姓名</span>
-              <span v-if="!unifiedPrompt.trim()" class="missing-item">创作提示词</span>
-            </span>
-          </div>
         </div>
         
-        <div class="config-scroll-container">
-          <el-scrollbar height="100%">
-            <div class="config-content">
-              <!-- 快速配置区 -->
-              <div class="quick-config">
-                <!-- 基础选择 -->
-                <div class="basic-selects">
-                  <div class="select-row">
-                    <div class="select-item">
-                      <label>题材</label>
-                      <el-select v-model="storyData.genre" placeholder="选择题材" size="small">
-                        <el-option v-for="genre in customGenres" :key="genre.value" :label="genre.label" :value="genre.value" />
-                      </el-select>
-                    </div>
-                    <div class="select-item">
-                      <label>情节</label>
-                      <el-select v-model="storyData.plotType" placeholder="选择情节类型" size="small">
-                        <el-option v-for="plot in customPlotTypes" :key="plot.value" :label="plot.label" :value="plot.value" />
-                      </el-select>
-                    </div>
-                  </div>
-                  
-                  <div class="select-row">
-                    <div class="select-item">
-                      <label>氛围</label>
-                      <el-select v-model="storyData.emotion" placeholder="选择情绪氛围" size="small">
-                        <el-option v-for="emotion in customEmotions" :key="emotion.value" :label="emotion.label" :value="emotion.value" />
-                      </el-select>
-                    </div>
-                    <div class="select-item">
-                      <label>时代</label>
-                      <el-select v-model="storyData.timeFrame" placeholder="选择时间背景" size="small">
-                        <el-option v-for="timeFrame in customTimeFrames" :key="timeFrame.value" :label="timeFrame.label" :value="timeFrame.value" />
-                      </el-select>
-                    </div>
-                  </div>
-                  
-                  <div class="select-row">
-                    <div class="select-item">
-                      <label>字数</label>
-                      <el-input-number 
-                        v-model="storyData.wordCount" 
-                        :min="500" 
-                        :max="10000" 
-                        :step="100"
-                        size="small"
-                        placeholder="目标字数"
-                        style="width: 100%"
-                      />
-                    </div>
-                    <div class="select-item">
-                      <!-- 占位，保持布局平衡 -->
-                    </div>
-                  </div>
-                </div>
+        <template #footer>
+          <div class="dialog-footer">
+            <el-button @click="showWritingStyleManager = false">取消</el-button>
+            <el-button type="primary" @click="saveWritingStyleConfig">保存配置</el-button>
+          </div>
+        </template>
+      </el-dialog>
 
-                <!-- 快速输入区 -->
-                <div class="quick-inputs">
-                  <div class="input-row">
-                    <el-input v-model="storyData.title" placeholder="小说标题" size="small" />
-                    <el-input v-model="storyData.protagonist.name" placeholder="主角姓名" size="small" />
-                  </div>
-                </div>
+      <!-- 短篇小说模块 -->
+      <div v-show="activeTab === 'story'" class="workspace">
+        <div class="workspace-layout">
+        
+          <!-- 配置面板 -->
+          <div class="config-sidebar">
+            <div class="config-header">
+              <h3>📖 小说配置</h3>
+              <div class="header-actions">
+                <el-button 
+                  size="small" 
+                  type="primary" 
+                  @click="openConfigManager"
+                  title="管理数据源设置"
+                >
+                  <el-icon><Setting /></el-icon>数据源设置
+                </el-button>
+                <el-button size="small" text @click="resetConfig">
+                  重置
+                </el-button>
+              </div>
+            </div>
+            
 
-                <!-- 提示词选择和编辑区 -->
-                <div class="prompt-area">
-                  <div class="prompt-header">
-                    <span>创作提示词</span>
-                    <div class="prompt-actions">
-                      <el-button 
-                        size="small" 
-                        text 
-                        type="info"
-                        @click="showPromptSelector = true"
-                      >
-                        <el-icon><List /></el-icon>
-                        选择模板
-                      </el-button>
-                      <el-button 
-                        size="small" 
-                        text 
-                        type="primary" 
-                        @click="showAdvancedConfig = !showAdvancedConfig"
-                      >
-                        {{ showAdvancedConfig ? '收起高级设置' : '展开高级设置' }}
-                      </el-button>
-                    </div>
+            
+            <el-button 
+              type="primary" 
+              @click="generateStory" 
+              :loading="generating"
+              :disabled="!isConfigValid"
+              class="generate-btn"
+            >
+              <el-icon><MagicStick /></el-icon>
+              {{ generating ? '生成中...' : '生成小说' }}
+            </el-button>
+
+
+            <!-- 验证提示 -->
+            <div v-if="!isConfigValid" class="validation-tip">
+              <el-icon><InfoFilled /></el-icon>
+              <span>还需填写：
+                <span v-if="!storyData.title">标题</span>
+                <span v-if="!storyData.title && !storyData.protagonist.name">、</span>
+                <span v-if="!storyData.protagonist.name">主角</span>
+                <span v-if="(!storyData.title || !storyData.protagonist.name) && !unifiedPrompt.trim()">、</span>
+                <span v-if="!unifiedPrompt.trim()">提示词</span>
+              </span>
+            </div>
+
+            <div class="config-form">
+              <!-- 基础配置区域 -->
+              <div class="config-section">
+                <div class="section-title">基础配置</div>
+                <div class="form-grid">
+                  <div class="form-item">
+                    <label>小说标题</label>
+                    <el-input v-model="storyData.title" placeholder="请输入小说标题" size="small" />
                   </div>
-                  
-                  <!-- 当前选择的提示词模板 -->
-                  <div v-if="selectedPromptTemplate" class="selected-template">
-                    <div class="template-info">
-                      <el-tag type="info" size="small">已选择模板</el-tag>
-                      <span class="template-title">{{ selectedPromptTemplate.title }}</span>
-                      <el-button 
-                        size="small" 
-                        type="text" 
-                        @click="clearSelectedTemplate"
-                      >
-                        清除
-                      </el-button>
-                    </div>
-                    <div class="template-description">{{ selectedPromptTemplate.description }}</div>
+                  <div class="form-item">
+                    <label>主角姓名</label>
+                    <el-input v-model="storyData.protagonist.name" placeholder="请输入主角姓名" size="small" />
                   </div>
-                  
-                  <!-- 提示词编辑区 -->
-                  <el-input
-                    v-model="unifiedPrompt"
-                    type="textarea"
-                    :rows="6"
-                    :placeholder="promptPlaceholder"
-                    class="unified-prompt-input"
-                  />
+                  <div class="form-item">
+                    <label>题材类型</label>
+                    <el-select v-model="storyData.genre" placeholder="选择题材" size="small">
+                      <el-option v-for="genre in customGenres" :key="genre.value" :label="genre.label" :value="genre.value" />
+                    </el-select>
+                  </div>
+                  <div class="form-item">
+                    <label>情节设定</label>
+                    <el-select v-model="storyData.plotType" placeholder="选择情节" size="small">
+                      <el-option v-for="plot in customPlotTypes" :key="plot.value" :label="plot.label" :value="plot.value" />
+                    </el-select>
+                  </div>
+                  <div class="form-item">
+                    <label>故事氛围</label>
+                    <el-select v-model="storyData.emotion" placeholder="选择氛围" size="small">
+                      <el-option v-for="emotion in customEmotions" :key="emotion.value" :label="emotion.label" :value="emotion.value" />
+                    </el-select>
+                  </div>
+                  <div class="form-item">
+                    <label>时代背景</label>
+                    <el-select v-model="storyData.timeFrame" placeholder="选择时代" size="small">
+                      <el-option v-for="time in customTimeFrames" :key="time.value" :label="time.label" :value="time.value" />
+                    </el-select>
+                  </div>
+                  <div class="form-item">
+                    <label>目标字数</label>
+                    <el-input-number v-model="storyData.wordCount" :min="500" :max="10000" :step="100" size="small" style="width: 100%" />
+                  </div>
                 </div>
               </div>
 
-              <!-- 高级配置区（可折叠） -->
-              <div v-if="showAdvancedConfig" class="advanced-config">
-                <el-divider content-position="left">高级配置</el-divider>
+              <!-- 创作提示词区域 -->
+              <div class="config-section">
+                <div class="section-header">
+                  <div class="section-title">创作提示词</div>
+                  <div class="section-actions">
+                    <el-button size="small" text @click="showStoryPromptSelector = true">
+                      <el-icon><List /></el-icon>模板
+                    </el-button>
+                    <el-button size="small" text type="primary" @click="showAdvancedConfig = showAdvancedConfig.includes('advanced') ? [] : ['advanced']">
+                      {{ showAdvancedConfig.includes('advanced') ? '收起' : '展开' }}高级
+                    </el-button>
+                  </div>
+                </div>
                 
-                <el-form :model="storyData" label-width="80px" size="small">
-                  <el-form-item label="主角性别">
-                    <el-radio-group v-model="storyData.protagonist.gender" size="small">
-                      <el-radio label="male">男</el-radio>
-                      <el-radio label="female">女</el-radio>
-                    </el-radio-group>
-                  </el-form-item>
-                  
-                  <el-form-item label="主角年龄">
-                    <el-input-number 
-                      v-model="storyData.protagonist.age" 
-                      :min="1" 
-                      :max="100" 
-                      size="small"
-                      style="width: 120px"
-                    />
-                  </el-form-item>
-                  
-                  <el-form-item label="故事地点">
-                    <el-input v-model="storyData.location" placeholder="描述故事发生的地点" />
-                  </el-form-item>
-                  
-                  <el-form-item label="参考文本">
-                    <el-input 
-                      v-model="storyData.referenceText" 
-                      type="textarea" 
-                      :rows="3"
-                      placeholder="可以粘贴一些参考文本或风格样例（可选）"
-                    />
-                  </el-form-item>
-                </el-form>
+                <div v-if="selectedPromptTemplate" class="selected-template">
+                  <el-tag type="info" size="small">{{ selectedPromptTemplate.title }}</el-tag>
+                  <el-button size="small" text @click="clearSelectedTemplate">清除</el-button>
+                </div>
+                
+                <el-input
+                  v-model="unifiedPrompt"
+                  type="textarea"
+                  :rows="3"
+                  :placeholder="promptPlaceholder"
+                  size="small"
+                />
               </div>
-           </div>
-         </el-scrollbar>
-        </div>
-      </div>
-      
-      <!-- 右侧内容区域 -->
-      <div class="content-panel">
-        <div class="panel-header">
-          <h3>{{ storyData.title || '生成内容' }}</h3>
-          <div class="content-actions" v-if="generatedStory">
-            <el-button size="small" @click="regenerateStory">
-              <el-icon><Refresh /></el-icon>
-              重新生成
-            </el-button>
-            <el-button size="small" @click="continueStory" :loading="continuingStory">
-              <el-icon><Plus /></el-icon>
-              {{ continuingStory ? '续写中...' : '续写' }}
-            </el-button>
-            <el-button size="small" @click="showOptimizeDialog">
-              <el-icon><EditPen /></el-icon>
-              选段优化
-            </el-button>
-            <el-button size="small" @click="showAiAssistant = true">
-              <el-icon><ChatDotRound /></el-icon>
-              AI助手
-            </el-button>
+
+              <!-- 高级配置 -->
+              <el-collapse v-model="showAdvancedConfig" class="advanced-config">
+                <el-collapse-item title="高级配置" name="advanced">
+                  <div class="form-grid">
+                    <div class="form-item">
+                      <label>主角性别</label>
+                      <el-radio-group v-model="storyData.protagonist.gender" size="small">
+                        <el-radio-button label="male">男</el-radio-button>
+                        <el-radio-button label="female">女</el-radio-button>
+                      </el-radio-group>
+                    </div>
+                    <div class="form-item">
+                      <label>主角年龄</label>
+                      <div class="age-input">
+                        <el-button size="small" @click="storyData.protagonist.age = Math.max(10, storyData.protagonist.age - 1)">-</el-button>
+                        <span class="age-display">{{ storyData.protagonist.age }}</span>
+                        <el-button size="small" @click="storyData.protagonist.age = Math.min(100, storyData.protagonist.age + 1)">+</el-button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="form-item">
+                    <label>故事地点</label>
+                    <el-input v-model="storyData.location" placeholder="故事发生地点" size="small" />
+                  </div>
+                  
+                  <div class="form-item full-width">
+                    <label>参考文本</label>
+                    <el-input
+                      v-model="storyData.referenceText"
+                      type="textarea"
+                      :rows="2"
+                      placeholder="可以贴一些参考文本或风格例子（可选）"
+                      size="small"
+                    />
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+
+            
           </div>
-        </div>
-        
-        <div class="content-body">
-          <!-- 富文本编辑器 - 始终显示 -->
-          <div class="story-result">
-            <div class="story-editor">
+
+          <!-- 编辑器 -->
+          <div class="editor-main">
+            <div class="editor-header">
+              <div class="editor-title">
+                <span>{{ storyData.title || '小说编辑器' }}</span>
+                <span class="word-count">{{ getTextWordCount(generatedStory) }} 字</span>
+              </div>
+              <div class="editor-actions">
+                <el-button size="small" @click="continueStory" :disabled="!generatedStory || continuingStory">
+                  <el-icon><EditPen /></el-icon>续写
+                </el-button>
+                <el-button size="small" @click="optimizeSelection" :disabled="!generatedStory">
+                  <el-icon><MagicStick /></el-icon>优化
+                </el-button>
+
+                <el-button size="small" @click="exportStory" :disabled="!generatedStory">
+                  <el-icon><Download /></el-icon>导出
+                </el-button>
+              </div>
+            </div>
+            
+            <div class="editor-content">
+              <!-- 生成状态提示 -->
+              <div v-if="generating" class="generating-status">
+                <div class="status-bar">
+                  <div class="status-info">
+                    <el-icon class="rotating"><Loading /></el-icon>
+                    <span>AI正在生成小说... ({{ streamingContent.length }}字)</span>
+                  </div>
+                  <el-button size="small" type="danger" text @click="stopGeneration">停止生成</el-button>
+                </div>
+              </div>
+              
               <div class="editor-wrapper">
                 <Toolbar
                   :editor="editorRef"
                   :defaultConfig="toolbarConfig"
                   mode="default"
-                  style="border-bottom: 1px solid #e4e7ed;"
                 />
                 <Editor
                   v-model="generatedStory"
@@ -255,398 +416,418 @@
                   mode="default"
                   @onCreated="handleEditorCreated"
                   @onChange="onEditorChange"
-                  style="height: 620px; overflow-y: hidden;"
+                  @mouseup="handleTextSelection"
                 />
               </div>
             </div>
           </div>
         </div>
-        
-        <!-- 底部操作栏 -->
-        <div class="content-footer">
-          <div class="word-count">
-            <el-tag>字数：{{ getTextWordCount(generatedStory) }}</el-tag>
-          </div>
-          <div class="footer-actions">
-
-            <el-button @click="exportStory" :disabled="!generatedStory">
-              <el-icon><Download /></el-icon>
-              导出文档
-            </el-button>
-          </div>
-        </div>
       </div>
     </div>
-    
-    <!-- AI助手对话框 -->
-    <el-dialog v-model="showAiAssistant" title="AI写作助手" width="600px">
-      <div class="ai-assistant">
-        <div class="chat-history">
-          <div 
-            v-for="(message, index) in chatHistory" 
-            :key="index"
-            class="chat-message"
-            :class="{ 'user': message.type === 'user', 'ai': message.type === 'ai' }"
-          >
-            <div class="message-content">{{ message.content }}</div>
+
+    <!-- 对话框 -->
+    <!-- 短文提示词选择对话框 -->
+    <el-dialog v-model="showArticlePromptSelector" title="选择短文提示词模板" width="80%" :before-close="handleArticlePromptDialogClose">
+      <div class="prompt-selector">
+        <div class="search-bar">
+          <el-input v-model="articlePromptSearchKeyword" placeholder="搜索提示词模板..." prefix-icon="Search" size="small" clearable />
+        </div>
+        <div class="prompt-list">
+          <div v-for="prompt in filteredArticlePrompts" :key="prompt.id" class="prompt-item" @click="selectArticlePrompt(prompt)">
+            <div class="prompt-title">{{ prompt.title }}</div>
+            <div class="prompt-description">{{ prompt.description }}</div>
+            <div class="prompt-tags">
+              <el-tag v-for="tag in prompt.tags" :key="tag" size="small">{{ tag }}</el-tag>
+            </div>
           </div>
         </div>
-        <div class="chat-input">
-          <el-input 
-            v-model="assistantInput"
-            placeholder="请输入您的问题或需求..."
-            @keyup.enter="sendToAssistant"
-          />
-          <el-button type="primary" @click="sendToAssistant" :loading="assistantLoading">
-            发送
-          </el-button>
+        <div v-if="filteredArticlePrompts.length === 0" class="empty-state">
+          <el-empty description="暂无短文提示词模板">
+            <el-button type="primary" @click="createPrompt">创建提示词</el-button>
+          </el-empty>
         </div>
       </div>
     </el-dialog>
 
-    <!-- 选段优化弹窗 -->
-    <el-dialog v-model="showOptimizeModal" title="选段优化" width="700px" :close-on-click-modal="false">
-      <div class="optimize-dialog">
-        <div class="selected-content">
-          <h4>选中的内容：</h4>
-          <div class="selected-text">{{ selectedTextForOptimize }}</div>
+    <!-- 短篇小说提示词选择对话框 -->
+    <el-dialog v-model="showStoryPromptSelector" title="选择短篇小说提示词模板" width="80%" :before-close="handleStoryPromptDialogClose">
+      <div class="prompt-selector">
+        <div class="search-bar">
+          <el-input v-model="storyPromptSearchKeyword" placeholder="搜索提示词模板..." prefix-icon="Search" size="small" clearable />
         </div>
-        
-        <div class="optimize-direction">
-          <h4>优化方向：</h4>
-          <el-input 
-            v-model="optimizeDirection"
-            type="textarea"
-            :rows="3"
-            placeholder="请描述您希望如何优化这段文字，例如：让语言更生动、增加细节描写、调整语气等..."
-          />
-        </div>
-        
-        <div class="optimize-actions">
-          <el-button type="primary" @click="performOptimize" :loading="optimizing">
-            <el-icon><MagicStick /></el-icon>
-            {{ optimizing ? '优化中...' : '开始优化' }}
-          </el-button>
-        </div>
-        
-        <div v-if="optimizedResult || optimizing" class="optimize-result">
-          <h4>{{ optimizing ? '优化中...' : '优化结果：' }}</h4>
-          <div class="optimized-text" ref="optimizedTextRef">
-            <div v-if="optimizing && !optimizedResult" class="optimizing-placeholder">
-              <el-icon class="is-loading"><Loading /></el-icon>
-              正在生成优化内容...
+        <div class="prompt-list">
+          <div v-for="prompt in filteredStoryPrompts" :key="prompt.id" class="prompt-item" @click="selectStoryPrompt(prompt)">
+            <div class="prompt-title">{{ prompt.title }}</div>
+            <div class="prompt-description">{{ prompt.description }}</div>
+            <div class="prompt-tags">
+              <el-tag v-for="tag in prompt.tags" :key="tag" size="small">{{ tag }}</el-tag>
             </div>
-            <div v-else class="optimized-content">{{ optimizedResult }}</div>
           </div>
-          <div v-if="!optimizing && optimizedResult" class="result-actions">
-            <el-button type="success" @click="copyOptimizedText">
-              <el-icon><DocumentCopy /></el-icon>
-              复制内容
-            </el-button>
-            <el-button @click="replaceOriginalText">
-              <el-icon><Switch /></el-icon>
-              替换原文
-            </el-button>
-          </div>
+        </div>
+        <div v-if="filteredStoryPrompts.length === 0" class="empty-state">
+          <el-empty description="暂无短篇小说提示词模板">
+            <el-button type="primary" @click="createPrompt">创建提示词</el-button>
+          </el-empty>
         </div>
       </div>
     </el-dialog>
 
-    <!-- 配置管理弹窗 -->
-    <el-dialog 
-      v-model="showConfigManager" 
-      title="创作配置管理" 
-      width="800px"
-      :close-on-click-modal="false"
-    >
-      <el-tabs v-model="activeConfigTab" type="border-card">
-        <!-- 题材管理 -->
-        <el-tab-pane label="题材" name="genres">
-          <div class="config-section">
-            <div class="config-header">
-              <h4>题材配置</h4>
-              <el-button size="small" type="primary" @click="addConfigItem('genres')">
-                <el-icon><Plus /></el-icon>
-                添加题材
-              </el-button>
-            </div>
-            <div class="config-list">
-              <div 
-                v-for="(item, index) in configData.genres" 
-                :key="index"
-                class="config-item"
-              >
-                <el-input v-model="item.label" placeholder="题材名称" size="small" />
-                <el-input v-model="item.value" placeholder="题材值" size="small" />
-                <el-input v-model="item.description" placeholder="题材描述（可选）" size="small" />
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  text 
-                  @click="removeConfigItem('genres', index)"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <!-- 情节管理 -->
-        <el-tab-pane label="情节" name="plotTypes">
-          <div class="config-section">
-            <div class="config-header">
-              <h4>情节配置</h4>
-              <el-button size="small" type="primary" @click="addConfigItem('plotTypes')">
-                <el-icon><Plus /></el-icon>
-                添加情节
-              </el-button>
-            </div>
-            <div class="config-list">
-              <div 
-                v-for="(item, index) in configData.plotTypes" 
-                :key="index"
-                class="config-item"
-              >
-                <el-input v-model="item.label" placeholder="情节名称" size="small" />
-                <el-input v-model="item.value" placeholder="情节值" size="small" />
-                <el-input v-model="item.description" placeholder="情节描述（可选）" size="small" />
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  text 
-                  @click="removeConfigItem('plotTypes', index)"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <!-- 氛围管理 -->
-        <el-tab-pane label="氛围" name="emotions">
-          <div class="config-section">
-            <div class="config-header">
-              <h4>氛围配置</h4>
-              <el-button size="small" type="primary" @click="addConfigItem('emotions')">
-                <el-icon><Plus /></el-icon>
-                添加氛围
-              </el-button>
-            </div>
-            <div class="config-list">
-              <div 
-                v-for="(item, index) in configData.emotions" 
-                :key="index"
-                class="config-item"
-              >
-                <el-input v-model="item.label" placeholder="氛围名称（支持表情符号）" size="small" />
-                <el-input v-model="item.value" placeholder="氛围值" size="small" />
-                <el-input v-model="item.description" placeholder="氛围描述（可选）" size="small" />
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  text 
-                  @click="removeConfigItem('emotions', index)"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <!-- 时代管理 -->
-        <el-tab-pane label="时代" name="timeFrames">
-          <div class="config-section">
-            <div class="config-header">
-              <h4>时代配置</h4>
-              <el-button size="small" type="primary" @click="addConfigItem('timeFrames')">
-                <el-icon><Plus /></el-icon>
-                添加时代
-              </el-button>
-            </div>
-            <div class="config-list">
-              <div 
-                v-for="(item, index) in configData.timeFrames" 
-                :key="index"
-                class="config-item"
-              >
-                <el-input v-model="item.label" placeholder="时代名称" size="small" />
-                <el-input v-model="item.value" placeholder="时代值" size="small" />
-                <el-input v-model="item.description" placeholder="时代描述（可选）" size="small" />
-                <el-button 
-                  size="small" 
-                  type="danger" 
-                  text 
-                  @click="removeConfigItem('timeFrames', index)"
-                >
-                  删除
-                </el-button>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-
-      <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="showConfigManager = false">取消</el-button>
-          <el-button @click="resetToDefault">恢复默认</el-button>
-          <el-button type="primary" @click="saveConfigData">保存配置</el-button>
-        </div>
-      </template>
-    </el-dialog>
-
-    <!-- 续写弹窗 -->
+    <!-- 续写对话框 -->
     <el-dialog 
       v-model="showContinueDialog" 
-      title="智能续写" 
-      width="900px"
-      :close-on-click-modal="false"
-      class="continue-dialog"
+      title="" 
+      width="1000px" 
+      class="modern-continue-dialog"
+      :show-close="false"
+      destroy-on-close
     >
-      <div class="continue-container">
-        <!-- 左侧：续写配置 -->
-        <div class="continue-config">
-          <div class="config-section">
-            <h4>续写方向</h4>
-            <el-input
-              v-model="continueDirection"
-              type="textarea"
-              :rows="4"
-              placeholder="请描述您希望故事如何发展，例如：希望主角遇到新的挑战、希望故事走向高潮、希望增加新的角色等..."
-            />
-          </div>
-          
-          <div class="config-section">
-            <h4>续写字数</h4>
-            <el-input-number
-              v-model="continueWordCount"
-              :min="100"
-              :max="10000"
-              :step="100"
-              placeholder="续写字数"
-              style="width: 100%"
-            />
-            <div class="word-count-tips">
-              <span>建议字数：100-10000字</span>
+      <template #header>
+        <div class="dialog-header">
+          <div class="header-left">
+            <div class="header-icon">
+              <el-icon size="24"><EditPen /></el-icon>
+            </div>
+            <div class="header-text">
+              <h3>AI智能续写</h3>
+              <p>基于现有内容智能续写，保持风格连贯</p>
             </div>
           </div>
-          
-          <div class="config-section">
-            <h4>续写建议：</h4>
-            <ul class="tips-list">
-              <li>描述您希望故事发展的方向</li>
-              <li>可以指定新的情节转折点</li>
-              <li>可以要求增加新的角色或场景</li>
-              <li>可以指定希望达到的情感效果</li>
-            </ul>
-          </div>
-          
-          <div class="config-actions">
-            <el-button @click="showContinueDialog = false">取消</el-button>
-            <el-button type="primary" @click="performContinue" :loading="continuingStory">
-              {{ continuingStory ? '续写中...' : '开始续写' }}
-            </el-button>
-          </div>
+          <el-button 
+            type="text" 
+            size="large" 
+            @click="showContinueDialog = false"
+            class="close-btn"
+          >
+            <el-icon size="20"><Close /></el-icon>
+          </el-button>
         </div>
-        
-        <!-- 右侧：续写结果 -->
-        <div class="continue-result">
-          <div class="result-header">
-            <h4>续写结果</h4>
+      </template>
+      
+      <div class="modern-continue-container">
+        <!-- 配置卡片 -->
+        <el-card shadow="never" class="config-card">
+          <template #header>
+            <div class="card-header">
+              <el-icon><Setting /></el-icon>
+              <span>续写配置</span>
+            </div>
+          </template>
+          
+          <div class="config-content">
+            <div class="config-row">
+              <div class="config-item">
+                <label class="config-label">
+                  <el-icon><Document /></el-icon>
+                  续写方向
+                </label>
+                <el-input 
+                  v-model="continueDirection"
+                  type="textarea"
+                  :rows="4"
+                  placeholder="描述续写的具体方向和要求，例如：\n• 推进主角与反派的最终对决\n• 展现角色内心的复杂情感\n• 描写紧张刺激的追逐场面\n• 揭示隐藏已久的重要秘密\n\n留空将根据前文内容自动续写"
+                  class="direction-input"
+                />
+              </div>
+              
+              <div class="config-item">
+                <label class="config-label">
+                  <el-icon><Tickets /></el-icon>
+                  续写字数
+                </label>
+                <el-slider
+                  v-model="continueWordCount"
+                  :min="200"
+                  :max="5000"
+                  :step="100"
+                  show-input
+                  :format-tooltip="(val) => `${val}字`"
+                  class="word-count-slider"
+                />
+              </div>
+            </div>
+            
+            <div class="tips-section">
+              <div class="tips-header">
+                <el-icon><InfoFilled /></el-icon>
+                <span>使用提示</span>
+              </div>
+              <div class="tips-grid">
+                <div class="tip-item">
+                  <el-icon color="#67c23a"><Check /></el-icon>
+                  <span>基于当前内容智能续写</span>
+                </div>
+                <div class="tip-item">
+                  <el-icon color="#67c23a"><Check /></el-icon>
+                  <span>保持原有风格和语调</span>
+                </div>
+                <div class="tip-item">
+                  <el-icon color="#67c23a"><Check /></el-icon>
+                  <span>支持自定义续写方向</span>
+                </div>
+                <div class="tip-item">
+                  <el-icon color="#67c23a"><Check /></el-icon>
+                  <span>确保情节自然连贯</span>
+                </div>
+              </div>
+            </div>
           </div>
+        </el-card>
+        
+        <!-- 结果卡片 -->
+        <el-card shadow="never" class="result-card">
+          <template #header>
+            <div class="card-header">
+              <el-icon><Magic /></el-icon>
+              <span>续写结果</span>
+              <div class="header-actions" v-if="continueResult && !continuingStory">
+                <el-button size="small" @click="copyContinueText">
+                  <el-icon><CopyDocument /></el-icon>
+                  复制
+                </el-button>
+              </div>
+            </div>
+          </template>
           
           <div class="result-content">
-            <div v-if="continueResult" class="continued-content">
-              <div class="continued-text" ref="continueTextRef">
-                {{ continueResult }}
+            <!-- 续写中状态 -->
+            <div v-if="continuingStory" class="streaming-state">
+              <div class="streaming-header">
+                <div class="streaming-icon">
+                  <el-icon class="rotating"><Loading /></el-icon>
+                </div>
+                <div class="streaming-text">
+                  <h4>AI正在创作中...</h4>
+                  <p>请稍候，正在为您生成精彩的续写内容</p>
+                </div>
               </div>
-              <div v-if="continuingStory" class="continuing-indicator">
-                <el-icon class="loading-icon"><Loading /></el-icon>
-                <span>续写中...</span>
+              <div class="streaming-content" v-if="continueResult">
+                <div class="streaming-text-content">{{ continueResult }}</div>
               </div>
             </div>
             
-            <div v-else-if="continuingStory" class="continuing-placeholder">
-              <el-icon class="loading-icon"><Loading /></el-icon>
-              <span>续写中...</span>
+            <!-- 续写完成状态 -->
+            <div v-else-if="continueResult" class="result-display">
+              <div class="result-stats">
+                <div class="stat-item">
+                  <span class="stat-label">续写字数</span>
+                  <span class="stat-value">{{ continueResult.length }}</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-label">预计阅读</span>
+                  <span class="stat-value">{{ Math.ceil(continueResult.length / 300) }}分钟</span>
+                </div>
+              </div>
+              <div ref="continueTextRef" class="result-text">{{ continueResult }}</div>
             </div>
             
-            <div v-else class="empty-placeholder">
-              <el-empty description="点击开始续写按钮生成续写内容" />
+            <!-- 空状态 -->
+            <div v-else class="empty-state">
+              <div class="empty-icon">
+                <el-icon size="48" color="#c0c4cc"><Document /></el-icon>
+              </div>
+              <h4>准备开始续写</h4>
+              <p>点击下方按钮，AI将基于您的现有内容进行智能续写</p>
             </div>
           </div>
-          
-          <div v-if="continueResult && !continuingStory" class="result-actions">
-            <el-button type="primary" @click="copyContinueText">
-              <el-icon><DocumentCopy /></el-icon>
-              复制内容
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
-
-    <!-- 提示词选择器对话框 -->
-    <el-dialog 
-      v-model="showPromptSelector" 
-      title="选择短篇小说提示词模板" 
-      width="900px"
-      @close="resetPromptSelector"
-    >
-      <div class="prompt-selector">
-        <!-- 提示词列表 -->
-        <div class="prompt-list">
-          <div class="prompt-grid">
-            <div 
-              v-for="prompt in shortStoryPrompts"
-              :key="prompt.id"
-              class="prompt-card"
-              :class="{ active: selectedPromptId === prompt.id }"
-              @click="selectPrompt(prompt)"
-            >
-              <div class="prompt-card-header">
-                <h5>{{ prompt.title }}</h5>
-                <el-icon v-if="selectedPromptId === prompt.id" class="selected-icon"><Check /></el-icon>
-              </div>
-              <div class="prompt-card-description">
-                <p>{{ prompt.description }}</p>
-              </div>
-              <div class="prompt-card-tags">
-                <el-tag v-for="tag in prompt.tags" :key="tag" size="small" type="info">{{ tag }}</el-tag>
-              </div>
-            </div>
-          </div>
-          
-          <div v-if="shortStoryPrompts.length === 0" class="empty-prompts">
-            <el-empty description="暂无短篇小说提示词模板">
-              <el-button type="primary" @click="goToPromptLibrary">去提示词库添加</el-button>
-            </el-empty>
-          </div>
-        </div>
-
-        <!-- 预览区域 -->
-        <div v-if="previewPrompt" class="prompt-preview">
-          <h4>模板预览</h4>
-          <div class="preview-content">
-            <el-input
-              v-model="editablePromptContent"
-              type="textarea"
-              :rows="12"
-              placeholder="提示词内容"
-              class="prompt-content-editor"
-            />
-          </div>
-        </div>
+        </el-card>
       </div>
       
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="showPromptSelector = false">取消</el-button>
-          <el-button @click="useOriginalPrompt" :disabled="!previewPrompt">使用原版</el-button>
-          <el-button type="primary" @click="useEditedPrompt" :disabled="!previewPrompt">使用编辑版</el-button>
+          <div class="footer-info">
+            <el-icon><InfoFilled /></el-icon>
+            <span>续写将基于当前{{ (generatedStory || '').replace(/<[^>]*>/g, '').length }}字的内容</span>
+          </div>
+          <div class="footer-actions">
+            <el-button size="large" @click="showContinueDialog = false">取消</el-button>
+            <el-button 
+              type="primary" 
+              size="large" 
+              @click="performContinue" 
+              :loading="continuingStory"
+              :disabled="!generatedStory || generatedStory.replace(/<[^>]*>/g, '').trim().length < 50"
+            >
+              <el-icon v-if="!continuingStory"><Magic /></el-icon>
+              {{ continuingStory ? '续写中...' : (continueResult ? '重新续写' : '开始续写') }}
+            </el-button>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- 选段优化对话框 -->
+    <el-dialog v-model="showOptimizeModal" title="✨ 选段优化" width="900px" class="optimize-dialog">
+      <div class="optimize-container">
+        <el-row :gutter="20" style="height: 100%;">
+          <!-- 左侧：配置区域 -->
+          <el-col :span="12" style="height: 100%;">
+            <div class="optimize-config">
+              <div class="config-section">
+                <h4>选中的文本</h4>
+                <div class="selected-text-preview">{{ selectedTextForOptimize || '请先在编辑器中选择要优化的文本' }}</div>
+              </div>
+              
+              <div class="config-section">
+                <h4>优化方向</h4>
+                <el-input 
+                  v-model="optimizeDirection"
+                  type="textarea"
+                  :rows="6"
+                  placeholder="请描述优化方向，例如：&#10;- 使语言更加生动形象&#10;- 增强情感表达&#10;- 优化描写细节&#10;- 提升文学性&#10;- 改善节奏感"
+                />
+              </div>
+              
+              <div class="config-actions">
+                <el-button @click="showOptimizeModal = false">取消</el-button>
+                <el-button type="primary" @click="performOptimize" :loading="optimizing">
+                  {{ optimizing ? '优化中...' : '开始优化' }}
+                </el-button>
+              </div>
+            </div>
+          </el-col>
+          
+          <!-- 右侧：结果区域 -->
+          <el-col :span="12" style="height: 100%;">
+            <div class="optimize-result">
+              <div class="result-header">
+                <h4>优化结果</h4>
+              </div>
+              
+              <div class="result-content">
+                <!-- 优化状态提示 -->
+                <div v-if="optimizing" class="optimizing-status">
+                  <div class="status-bar">
+                    <div class="status-info">
+                      <el-icon class="rotating"><Loading /></el-icon>
+                      <span>AI正在优化中... ({{ optimizedResult.length }}字)</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- 优化结果显示区域 -->
+                <div v-if="optimizedResult || optimizing" class="optimized-content-container">
+                  <div ref="optimizedTextRef" class="optimized-content">{{ optimizedResult }}</div>
+                  <div v-if="!optimizing" class="result-actions">
+                    <el-button size="small" @click="copyOptimizedText">复制</el-button>
+                    <el-button size="small" type="primary" @click="replaceOriginalText">替换原文</el-button>
+                  </div>
+                </div>
+                
+                <div v-else class="empty-result">
+                  <el-empty description="点击开始优化" image-size="80" />
+                </div>
+              </div>
+            </div>
+          </el-col>
+        </el-row>
+      </div>
+    </el-dialog>
+
+    <!-- 配置管理对话框 -->
+    <el-dialog v-model="showConfigManager" title="创作配置管理" width="1000px" class="config-manager-dialog">
+      <div class="config-manager-container">
+        <el-tabs v-model="activeConfigTab" class="config-tabs">
+          <!-- 题材管理 -->
+          <el-tab-pane label="题材" name="genres">
+            <div class="config-tab-content">
+              <div class="tab-header">
+                <h4>题材配置</h4>
+                <el-button type="primary" size="small" @click="addConfigItem('genres')">
+                  <el-icon><Plus /></el-icon>添加题材
+                </el-button>
+              </div>
+              
+              <div class="config-list">
+                <div v-for="(item, index) in configData.genres" :key="index" class="config-item-row">
+                  <el-input v-model="item.label" placeholder="显示名称" class="config-input" />
+                  <el-input v-model="item.value" placeholder="值（英文）" class="config-input" />
+                  <el-input v-model="item.description" placeholder="描述" class="config-input description-input" />
+                  <el-button type="danger" size="small" text @click="removeConfigItem('genres', index)">
+                    删除
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <!-- 情节管理 -->
+          <el-tab-pane label="情节" name="plotTypes">
+            <div class="config-tab-content">
+              <div class="tab-header">
+                <h4>情节配置</h4>
+                <el-button type="primary" size="small" @click="addConfigItem('plotTypes')">
+                  <el-icon><Plus /></el-icon>添加情节
+                </el-button>
+              </div>
+              
+              <div class="config-list">
+                <div v-for="(item, index) in configData.plotTypes" :key="index" class="config-item-row">
+                  <el-input v-model="item.label" placeholder="显示名称" class="config-input" />
+                  <el-input v-model="item.value" placeholder="值（英文）" class="config-input" />
+                  <el-input v-model="item.description" placeholder="描述" class="config-input description-input" />
+                  <el-button type="danger" size="small" text @click="removeConfigItem('plotTypes', index)">
+                    删除
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <!-- 氛围管理 -->
+          <el-tab-pane label="氛围" name="emotions">
+            <div class="config-tab-content">
+              <div class="tab-header">
+                <h4>氛围配置</h4>
+                <el-button type="primary" size="small" @click="addConfigItem('emotions')">
+                  <el-icon><Plus /></el-icon>添加氛围
+                </el-button>
+              </div>
+              
+              <div class="config-list">
+                <div v-for="(item, index) in configData.emotions" :key="index" class="config-item-row">
+                  <el-input v-model="item.label" placeholder="显示名称" class="config-input" />
+                  <el-input v-model="item.value" placeholder="值（英文）" class="config-input" />
+                  <el-input v-model="item.description" placeholder="描述" class="config-input description-input" />
+                  <el-button type="danger" size="small" text @click="removeConfigItem('emotions', index)">
+                    删除
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
+
+          <!-- 时代管理 -->
+          <el-tab-pane label="时代" name="timeFrames">
+            <div class="config-tab-content">
+              <div class="tab-header">
+                <h4>时代配置</h4>
+                <el-button type="primary" size="small" @click="addConfigItem('timeFrames')">
+                  <el-icon><Plus /></el-icon>添加时代
+                </el-button>
+              </div>
+              
+              <div class="config-list">
+                <div v-for="(item, index) in configData.timeFrames" :key="index" class="config-item-row">
+                  <el-input v-model="item.label" placeholder="显示名称" class="config-input" />
+                  <el-input v-model="item.value" placeholder="值（英文）" class="config-input" />
+                  <el-input v-model="item.description" placeholder="描述" class="config-input description-input" />
+                  <el-button type="danger" size="small" text @click="removeConfigItem('timeFrames', index)">
+                    删除
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </el-tab-pane>
+
+
+        </el-tabs>
+      </div>
+      
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="resetToDefault">恢复默认</el-button>
+          <el-button @click="showConfigManager = false">取消</el-button>
+          <el-button type="primary" @click="saveConfigData">保存配置</el-button>
         </div>
       </template>
     </el-dialog>
@@ -654,9 +835,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, shallowRef, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, shallowRef, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { MagicStick, Refresh, EditPen, ChatDotRound, Download, Check, Loading, Plus, Setting, List, DocumentCopy, Switch } from '@element-plus/icons-vue'
+import { MagicStick, Refresh, EditPen, Download, Check, Loading, Plus, Setting, List, DocumentCopy, Switch, Delete, Search, InfoFilled } from '@element-plus/icons-vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import { useNovelStore } from '@/stores/novel'
@@ -665,17 +846,34 @@ import { useRouter } from 'vue-router'
 const novelStore = useNovelStore()
 const router = useRouter()
 
+// 模块切换
+const activeTab = ref('article') // 默认显示短文模块
+
+// 短文模块数据
+const articleData = reactive({
+  title: '',
+  wordCount: 800,
+  style: '',
+  prompt: '',
+  references: []
+})
+
+// 短文模块状态
+const generatingArticle = ref(false)
+const articleContent = ref('')
+const articleStreamingContent = ref('')
+const selectedArticlePromptTemplate = ref(null)
+const showArticlePromptSelector = ref(false)
+const articlePromptSearchKeyword = ref('')
+
 // 响应式数据
 const generating = ref(false)
+const streamingContent = ref('')
 const continuingStory = ref(false)
 const generatedStory = ref('')
 const hasSelection = ref(false)
 const selectedText = ref('')
-const showAiAssistant = ref(false)
-const assistantInput = ref('')
-const assistantLoading = ref(false)
-const chatHistory = ref([])
-const showAdvancedConfig = ref(false)
+const showAdvancedConfig = ref([])
 const unifiedPrompt = ref('')
 
 // 续写相关
@@ -688,6 +886,7 @@ const continueTextRef = ref(null)
 // 配置管理相关
 const showConfigManager = ref(false)
 const activeConfigTab = ref('genres')
+const showWritingStyleManager = ref(false)
 
 // 提示词选择相关
 const showPromptSelector = ref(false)
@@ -705,9 +904,52 @@ const optimizing = ref(false)
 const optimizedResult = ref('')
 const optimizedTextRef = ref(null)
 
+// 短文模块计算属性
+const isArticleConfigValid = computed(() => {
+  return articleData.title.trim() && articleData.prompt.trim()
+})
+
+const articleWordCount = computed(() => {
+  if (!articleContent.value) return 0
+  // 移除HTML标签并计算字数
+  return articleContent.value.replace(/<[^>]*>/g, '').trim().length
+})
+
+const filteredArticlePrompts = computed(() => {
+  const allPrompts = JSON.parse(localStorage.getItem('prompts') || '[]')
+  const articlePrompts = allPrompts.filter(p => p.category === 'short-story')
+  
+  if (!articlePromptSearchKeyword.value) {
+    return articlePrompts
+  }
+  
+  const keyword = articlePromptSearchKeyword.value.toLowerCase()
+  return articlePrompts.filter(prompt => 
+    prompt.title.toLowerCase().includes(keyword) ||
+    prompt.description.toLowerCase().includes(keyword) ||
+    prompt.tags.some(tag => tag.toLowerCase().includes(keyword))
+  )
+})
+
+// 短篇小说提示词选择
+const showStoryPromptSelector = ref(false)
+const storyPromptSearchKeyword = ref('')
+
 // 计算属性 - 短篇小说提示词
-const shortStoryPrompts = computed(() => {
-  return availablePrompts.value.filter(prompt => prompt.category === 'short-story')
+const filteredStoryPrompts = computed(() => {
+  const allPrompts = JSON.parse(localStorage.getItem('prompts') || '[]')
+  const storyPrompts = allPrompts.filter(p => p.category === 'short-story')
+  
+  if (!storyPromptSearchKeyword.value) {
+    return storyPrompts
+  }
+  
+  const keyword = storyPromptSearchKeyword.value.toLowerCase()
+  return storyPrompts.filter(prompt => 
+    prompt.title.toLowerCase().includes(keyword) ||
+    prompt.description.toLowerCase().includes(keyword) ||
+    prompt.tags.some(tag => tag.toLowerCase().includes(keyword))
+  )
 })
 
 // 计算属性 - 提示词占位符
@@ -729,6 +971,21 @@ const editorRef = shallowRef()
 const toolbarConfig = {}
 const editorConfig = {
   placeholder: '生成的小说内容将显示在这里...',
+  MENU_CONF: {
+    uploadImage: {
+      server: '/api/upload-image',
+      fieldName: 'file',
+      maxFileSize: 5 * 1024 * 1024,
+      allowedFileTypes: ['image/*']
+    }
+  }
+}
+
+// 短文编辑器相关
+const articleEditorRef = shallowRef()
+const articleToolbarConfig = {}
+const articleEditorConfig = {
+  placeholder: '生成的短文内容将显示在这里，您也可以直接编辑...',
   MENU_CONF: {
     uploadImage: {
       server: '/api/upload-image',
@@ -786,6 +1043,16 @@ const defaultConfigData = {
     { value: 'modern', label: '近代', description: '近代历史背景' },
     { value: 'contemporary', label: '当代', description: '现代社会背景' },
     { value: 'future', label: '未来', description: '未来科幻背景' }
+  ],
+  writingStyles: [
+    { value: 'zhihu', label: '知乎风格', description: '理性分析，逻辑清晰，适合深度思考类内容' },
+    { value: 'wechat', label: '公众号风格', description: '亲和力强，易于传播，适合大众阅读' },
+    { value: 'toutiao', label: '头条风格', description: '标题党，吸引眼球，适合热点话题' },
+    { value: 'xiaohongshu', label: '小红书风格', description: '生活化，年轻态，适合分享体验' },
+    { value: 'weibo', label: '微博风格', description: '简洁明快，热点话题，适合快速传播' },
+    { value: 'academic', label: '学术风格', description: '严谨专业，引经据典，适合学术论述' },
+    { value: 'news', label: '新闻风格', description: '客观中立，事实为主，适合新闻报道' },
+    { value: 'story', label: '故事风格', description: '叙事生动，情节丰富，适合故事创作' }
   ]
 }
 
@@ -794,7 +1061,8 @@ const configData = reactive({
   genres: [],
   plotTypes: [],
   emotions: [],
-  timeFrames: []
+  timeFrames: [],
+  writingStyles: []
 })
 
 // 计算属性
@@ -809,6 +1077,202 @@ const customGenres = computed(() => configData.genres)
 const customPlotTypes = computed(() => configData.plotTypes)
 const customEmotions = computed(() => configData.emotions)
 const customTimeFrames = computed(() => configData.timeFrames)
+const customWritingStyles = computed(() => configData.writingStyles)
+
+// 短文模块方法
+const handleTabClick = (tab) => {
+  activeTab.value = tab.name
+}
+
+const resetArticleConfig = () => {
+  articleData.title = ''
+  articleData.wordCount = 800
+  articleData.style = ''
+  articleData.prompt = ''
+  articleData.references = []
+  articleContent.value = ''
+}
+
+const addReferenceArticle = () => {
+  articleData.references.push({
+    title: '',
+    content: ''
+  })
+}
+
+const removeReferenceArticle = (index) => {
+  articleData.references.splice(index, 1)
+}
+
+const selectArticlePrompt = (prompt) => {
+  selectedArticlePromptTemplate.value = prompt
+  articleData.prompt = prompt.content
+  showArticlePromptSelector.value = false
+}
+
+const clearArticleSelectedTemplate = () => {
+  selectedArticlePromptTemplate.value = null
+}
+
+const handleArticlePromptDialogClose = () => {
+  showArticlePromptSelector.value = false
+  articlePromptSearchKeyword.value = ''
+}
+
+// 短篇小说提示词选择方法
+const selectStoryPrompt = (prompt) => {
+  selectedPromptTemplate.value = prompt
+  unifiedPrompt.value = prompt.content
+  showStoryPromptSelector.value = false
+}
+
+const handleStoryPromptDialogClose = () => {
+  showStoryPromptSelector.value = false
+  storyPromptSearchKeyword.value = ''
+}
+
+const generateArticle = async () => {
+  if (!isArticleConfigValid.value) {
+    ElMessage.warning('请完善文章配置')
+    return
+  }
+
+  try {
+    generatingArticle.value = true
+    articleContent.value = ''
+    articleStreamingContent.value = ''
+
+    // 构建提示词
+    let prompt = `请根据以下要求创作一篇短文：
+
+标题：${articleData.title}
+字数：约${articleData.wordCount}字
+文风类型：${getStyleDescription(articleData.style)}
+
+创作要求：
+${articleData.prompt}`
+
+    // 添加参考文章
+    if (articleData.references.length > 0) {
+      prompt += `\n\n参考文章：\n`
+      articleData.references.forEach((ref, index) => {
+        if (ref.title || ref.content) {
+          prompt += `参考${index + 1}：\n`
+          if (ref.title) prompt += `标题：${ref.title}\n`
+          if (ref.content) prompt += `内容：${ref.content}\n\n`
+        }
+      })
+    }
+
+    prompt += `\n请创作一篇符合要求的${articleData.wordCount}字左右的短文，要求内容充实，语言流畅，符合指定的文风特点。`
+
+    // 调用AI生成
+    let accumulatedText = ''
+    await novelStore.generateContent(prompt, (chunk) => {
+      if (!generatingArticle.value) return // 如果已停止，不更新内容
+      
+      accumulatedText += chunk
+      articleStreamingContent.value = accumulatedText
+      
+      // 实时更新编辑器内容
+      const htmlContent = accumulatedText.replace(/\n/g, '<br/>')
+      articleContent.value = htmlContent
+      
+      // 同步更新编辑器显示
+      if (articleEditorRef.value) {
+        nextTick(() => {
+          if (articleEditorRef.value) {
+            articleEditorRef.value.setHtml(htmlContent)
+          }
+        })
+      }
+    })
+
+    if (generatingArticle.value) { // 只有在没被停止的情况下才设置最终内容
+      // 将换行转换为适合富文本编辑器的格式
+      const finalContent = accumulatedText.replace(/\n/g, '<br/>')
+      articleContent.value = finalContent
+      
+      // 确保编辑器显示最终内容
+      if (articleEditorRef.value) {
+        articleEditorRef.value.setHtml(finalContent)
+      }
+      
+      ElMessage.success('短文生成完成')
+    }
+
+  } catch (error) {
+    console.error('短文生成失败:', error)
+    ElMessage.error(`生成失败: ${error.message}`)
+  } finally {
+    generatingArticle.value = false
+    articleStreamingContent.value = ''
+  }
+}
+
+const stopArticleGeneration = () => {
+  generatingArticle.value = false
+  ElMessage.info('已停止生成')
+}
+
+const copyArticleContent = async () => {
+  if (!articleContent.value) {
+    ElMessage.warning('没有可复制的内容')
+    return
+  }
+  
+  try {
+    // 移除HTML标签，获取纯文本
+    const plainText = articleContent.value.replace(/<[^>]*>/g, '').trim()
+    await navigator.clipboard.writeText(plainText)
+    ElMessage.success('内容已复制到剪贴板')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
+}
+
+const saveArticle = () => {
+  if (!articleContent.value) {
+    ElMessage.warning('没有可保存的内容')
+    return
+  }
+  
+  // 移除HTML标签，获取纯文本
+  const plainText = articleContent.value.replace(/<[^>]*>/g, '').trim()
+  const content = `${articleData.title}\n\n${plainText}`
+  
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `${articleData.title || '短文'}.txt`
+  link.click()
+  ElMessage.success('文章已保存')
+}
+
+const clearArticleContent = () => {
+  ElMessageBox.confirm('确定要清空内容吗？', '确认', {
+    type: 'warning'
+  }).then(() => {
+    articleContent.value = ''
+    ElMessage.success('内容已清空')
+  }).catch(() => {})
+}
+
+const getStyleDescription = (style) => {
+  const styleInfo = customWritingStyles.value.find(s => s.value === style)
+  if (styleInfo) {
+    // 如果有文风提示词，返回完整信息
+    if (styleInfo.prompt) {
+      return `${styleInfo.label} - ${styleInfo.description}\n\n文风要求：${styleInfo.prompt}`
+    }
+    return `${styleInfo.label} - ${styleInfo.description}`
+  }
+  return '通用风格'
+}
+
+const createPrompt = () => {
+  router.push('/prompts')
+}
 
 // 方法
 
@@ -851,9 +1315,24 @@ const generateStory = async () => {
     // 使用流式返回
     let accumulatedText = ''
     await novelStore.generateContent(prompt, (chunk) => {
+      if (!generating.value) return // 如果已停止，不更新内容
+      
       accumulatedText += chunk
+      streamingContent.value = accumulatedText
+      
       // 将纯文本转换为HTML格式
-      generatedStory.value = accumulatedText.replace(/\n/g, '<br/>')
+      const htmlContent = accumulatedText.replace(/\n/g, '<br/>')
+      generatedStory.value = htmlContent
+      
+      // 实时更新编辑器显示
+      if (editorRef.value) {
+        // 使用nextTick确保DOM更新
+        nextTick(() => {
+          if (editorRef.value) {
+            editorRef.value.setHtml(htmlContent)
+          }
+        })
+      }
     })
     
     ElMessage.success('小说生成成功！')
@@ -985,8 +1464,13 @@ const performContinue = async () => {
     console.log('续写方向:', continueDirection.value)
     
     // 使用流式返回，实时更新续写结果
+    let accumulatedText = ''
     await novelStore.generateContent(continuePrompt, (chunk) => {
-      continueResult.value += chunk
+      if (!continuingStory.value) return // 如果已停止，不更新内容
+      
+      accumulatedText += chunk
+      continueResult.value = accumulatedText
+      
       // 自动滚动到底部
       nextTick(() => {
         if (continueTextRef.value) {
@@ -1022,6 +1506,7 @@ const copyContinueText = async () => {
   }
 }
 
+// 追加续写内容到原文
 // 构建续写提示词
 const buildContinuePrompt = (currentText) => {
   const { protagonist, genre, plotType, emotion, timeFrame, location } = storyData
@@ -1100,7 +1585,7 @@ const resetConfig = () => {
     storyData.protagonist.gender = 'male'
     storyData.protagonist.age = 25
     unifiedPrompt.value = ''
-    showAdvancedConfig.value = false
+    showAdvancedConfig.value = []
     
     ElMessage.success('配置已重置')
   }).catch(() => {
@@ -1114,6 +1599,15 @@ const handleEditorCreated = (editor) => {
 
 const onEditorChange = (editor) => {
   // 编辑器内容变化时的处理，v-model会自动处理
+}
+
+// 短文编辑器事件处理
+const handleArticleEditorCreated = (editor) => {
+  articleEditorRef.value = editor
+}
+
+const onArticleEditorChange = (editor) => {
+  // 短文编辑器内容变化时的处理，v-model会自动处理
 }
 
 const handleTextSelection = (event) => {
@@ -1133,13 +1627,33 @@ const showOptimizeDialog = () => {
     return
   }
   
-  const selectedText = editorRef.value.getSelectionText()
-  if (!selectedText) {
+  // 改进文本选择逻辑
+  let selectedText = ''
+  try {
+    // 尝试从编辑器获取选中文本
+    selectedText = editorRef.value.getSelectionText()
+    
+    // 如果编辑器方法失败，尝试使用浏览器原生方法
+    if (!selectedText) {
+      const selection = window.getSelection()
+      if (selection && selection.toString()) {
+        selectedText = selection.toString()
+      }
+    }
+  } catch (error) {
+    console.warn('获取选中文本失败，尝试备用方法:', error)
+    const selection = window.getSelection()
+    if (selection && selection.toString()) {
+      selectedText = selection.toString()
+    }
+  }
+  
+  if (!selectedText || selectedText.trim().length === 0) {
     ElMessage.warning('请先选择要优化的文本')
     return
   }
   
-  selectedTextForOptimize.value = selectedText
+  selectedTextForOptimize.value = selectedText.trim()
   optimizeDirection.value = ''
   optimizedResult.value = ''
   showOptimizeModal.value = true
@@ -1211,18 +1725,56 @@ const copyOptimizedText = async () => {
 
 // 替换原文
 const replaceOriginalText = () => {
-  if (!optimizedResult.value || !editorRef.value) {
-    ElMessage.warning('无法替换原文')
+  if (!optimizedResult.value) {
+    ElMessage.warning('没有优化结果可替换')
+    return
+  }
+  
+  if (!selectedTextForOptimize.value) {
+    ElMessage.warning('没有选中的原文')
     return
   }
   
   try {
-    // 获取当前编辑器内容
-    const currentContent = generatedStory.value || ''
+    // 获取当前编辑器的HTML内容
+    let currentContent = ''
+    if (editorRef.value) {
+      currentContent = editorRef.value.getHtml() || generatedStory.value || ''
+    } else {
+      currentContent = generatedStory.value || ''
+    }
     
-    // 替换选中的文本
-    const newContent = currentContent.replace(selectedTextForOptimize.value, optimizedResult.value)
+    console.log('当前内容:', currentContent)
+    console.log('要替换的文本:', selectedTextForOptimize.value)
+    console.log('替换为:', optimizedResult.value)
+    
+    // 处理HTML内容中的文本替换
+    // 先尝试直接替换
+    let newContent = currentContent.replace(selectedTextForOptimize.value, optimizedResult.value)
+    
+    // 如果直接替换失败，尝试处理HTML标签
+    if (newContent === currentContent) {
+      // 移除HTML标签进行匹配
+      const plainContent = currentContent.replace(/<[^>]*>/g, '')
+      if (plainContent.includes(selectedTextForOptimize.value)) {
+        // 在纯文本中找到了，需要在HTML中定位并替换
+        const regex = new RegExp(selectedTextForOptimize.value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')
+        newContent = currentContent.replace(regex, optimizedResult.value)
+      }
+    }
+    
+    if (newContent === currentContent) {
+      ElMessage.warning('未找到要替换的文本，请重新选择')
+      return
+    }
+    
+    // 更新内容
     generatedStory.value = newContent
+    
+    // 更新编辑器
+    if (editorRef.value) {
+      editorRef.value.setHtml(newContent)
+    }
     
     // 关闭弹窗
     showOptimizeModal.value = false
@@ -1238,28 +1790,6 @@ const optimizeSelection = async () => {
   // 保留原有方法以防兼容性问题
   showOptimizeDialog()
 }
-
-const sendToAssistant = async () => {
-  if (!assistantInput.value.trim()) return
-  
-  const userMessage = assistantInput.value
-  chatHistory.value.push({ type: 'user', content: userMessage })
-  assistantInput.value = ''
-  assistantLoading.value = true
-  
-  try {
-    const currentText = generatedStory.value ? generatedStory.value.replace(/<[^>]*>/g, '') : ''
-    const prompt = `作为一个专业的写作助手，请回答以下问题：\n\n${userMessage}\n\n当前小说内容：\n${currentText.slice(0, 500)}...`
-    const response = await novelStore.generateContent(prompt)
-    chatHistory.value.push({ type: 'ai', content: response })
-  } catch (error) {
-    ElMessage.error('AI助手回复失败')
-  } finally {
-    assistantLoading.value = false
-  }
-}
-
-
 
 const exportStory = () => {
   // 实现导出功能
@@ -1291,11 +1821,13 @@ const loadConfigData = () => {
       Object.keys(defaultConfigData).forEach(key => {
         configData[key] = config[key] || [...defaultConfigData[key]]
       })
+      console.log('加载已保存的配置数据:', configData)
     } else {
       // 首次使用，加载默认配置
       Object.keys(defaultConfigData).forEach(key => {
         configData[key] = [...defaultConfigData[key]]
       })
+      console.log('加载默认配置数据:', configData)
     }
   } catch (error) {
     console.error('加载配置失败:', error)
@@ -1303,7 +1835,27 @@ const loadConfigData = () => {
     Object.keys(defaultConfigData).forEach(key => {
       configData[key] = [...defaultConfigData[key]]
     })
+    console.log('出错后使用默认配置:', configData)
   }
+  
+  // 确保配置数据包含至少一些数据源设置
+  if (configData.genres.length === 0) {
+    configData.genres = [...defaultConfigData.genres]
+  }
+  if (configData.plotTypes.length === 0) {
+    configData.plotTypes = [...defaultConfigData.plotTypes]
+  }
+  if (configData.emotions.length === 0) {
+    configData.emotions = [...defaultConfigData.emotions]
+  }
+  if (configData.timeFrames.length === 0) {
+    configData.timeFrames = [...defaultConfigData.timeFrames]
+  }
+  if (configData.writingStyles.length === 0) {
+    configData.writingStyles = [...defaultConfigData.writingStyles]
+  }
+  
+  console.log('最终配置数据:', configData)
 }
 
 const saveConfigData = () => {
@@ -1327,6 +1879,45 @@ const addConfigItem = (type) => {
 
 const removeConfigItem = (type, index) => {
   configData[type].splice(index, 1)
+}
+
+// 文风管理方法
+const addWritingStyle = () => {
+  configData.writingStyles.push({
+    label: '',
+    value: '',
+    prompt: ''
+  })
+}
+
+const removeWritingStyle = (index) => {
+  configData.writingStyles.splice(index, 1)
+}
+
+const saveWritingStyleConfig = () => {
+  try {
+    localStorage.setItem('shortStoryConfig', JSON.stringify(configData))
+    ElMessage.success('文风配置保存成功！')
+    showWritingStyleManager.value = false
+  } catch (error) {
+    console.error('保存文风配置失败:', error)
+    ElMessage.error('保存文风配置失败')
+  }
+}
+
+const openConfigManager = () => {
+  console.log('准备打开配置管理器')
+  console.log('当前配置数据:', configData)
+  console.log('默认配置数据:', defaultConfigData)
+  
+  // 确保配置数据已加载
+  if (configData.genres.length === 0) {
+    console.log('配置数据为空，重新加载...')
+    loadConfigData()
+  }
+  
+  console.log('重新加载后的配置数据:', configData)
+  showConfigManager.value = true
 }
 
 const resetToDefault = () => {
@@ -1353,15 +1944,135 @@ const loadPrompts = () => {
   try {
     const savedPrompts = localStorage.getItem('prompts')
     if (savedPrompts) {
-      availablePrompts.value = JSON.parse(savedPrompts)
+      const prompts = JSON.parse(savedPrompts)
+      // 检查是否有短篇小说分类的提示词，如果没有则添加默认的
+      const hasShortStoryPrompts = prompts.some(p => p.category === 'short-story')
+      if (!hasShortStoryPrompts) {
+        const defaultShortStoryPrompts = getDefaultShortStoryPrompts()
+        prompts.push(...defaultShortStoryPrompts)
+        // 保存更新后的提示词
+        localStorage.setItem('prompts', JSON.stringify(prompts))
+        console.log('已添加默认短篇小说提示词')
+      }
+      availablePrompts.value = prompts
     } else {
-      availablePrompts.value = []
+      // 如果没有任何提示词，加载默认的
+      const defaultPrompts = getDefaultShortStoryPrompts()
+      availablePrompts.value = defaultPrompts
+      localStorage.setItem('prompts', JSON.stringify(defaultPrompts))
     }
     console.log('短篇小说模块加载提示词数据:', availablePrompts.value.length)
   } catch (error) {
     console.error('加载提示词失败:', error)
-    availablePrompts.value = []
+    // 出错时也提供默认的短篇小说提示词
+    availablePrompts.value = getDefaultShortStoryPrompts()
   }
+}
+
+// 获取默认短篇小说提示词
+const getDefaultShortStoryPrompts = () => {
+  return [
+    {
+      id: Date.now() + 1,
+      title: '都市短篇小说生成器',
+      category: 'short-story',
+      description: '专门用于创作都市背景的短篇小说，贴近现代生活',
+      content: `请创作一篇都市背景的短篇小说。
+
+【基础设定】
+- 小说标题：{小说标题}
+- 主角姓名：{主角姓名}（{主角性别}，{主角年龄}岁）
+- 故事地点：{故事地点}
+- 字数要求：{字数要求}
+
+【题材风格】
+题材类型：{题材类型}
+情节类型：{情节类型}
+情绪氛围：{情绪氛围}
+时间背景：{时间背景}
+
+【创作要求】
+{创作要求}
+
+【输出要求】
+1. 情节完整，有明确的开头、发展、高潮、结局
+2. 人物性格鲜明，符合都市背景设定
+3. 语言生动流畅，贴近现代生活
+4. 场景描写真实，体现都市特色
+5. 包含丰富的对话和细节描写
+6. 传达积极正面的价值观
+
+请创作一篇完整的都市短篇小说。`,
+      tags: ['短篇小说', '都市', '现代生活', '完整故事'],
+      isDefault: true
+    },
+    {
+      id: Date.now() + 2,
+      title: '通用短篇小说模板',
+      category: 'short-story',
+      description: '适用于各种题材的通用短篇小说创作模板',
+      content: `请根据以下设定创作一篇短篇小说。
+
+【基础信息】
+标题：{小说标题}
+主角：{主角姓名}（{主角性别}，{主角年龄}岁）
+地点：{故事地点}
+字数：{字数要求}
+
+【风格设定】
+题材：{题材类型}
+情节：{情节类型}
+氛围：{情绪氛围}
+背景：{时间背景}
+
+【特殊要求】
+{创作要求}
+
+【创作原则】
+1. 开头要抓人，快速进入故事情境
+2. 中间发展要有转折和冲突
+3. 结尾要有深度，给读者思考空间
+4. 人物性格要鲜明立体
+5. 对话要自然流畅
+6. 描写要生动有画面感
+7. 主题积极正面
+
+请严格按照上述要求创作一篇完整的短篇小说。`,
+      tags: ['短篇小说', '通用模板', '多题材', '标准格式'],
+      isDefault: true
+    },
+    {
+      id: Date.now() + 3,
+      title: '玄幻短篇小说生成器',
+      category: 'short-story',
+      description: '创作充满想象力的玄幻类短篇小说',
+      content: `请创作一篇玄幻背景的短篇小说。
+
+【基础设定】
+- 小说标题：{小说标题}
+- 主角姓名：{主角姓名}（{主角性别}，{主角年龄}岁）
+- 故事地点：{故事地点}
+- 字数要求：{字数要求}
+
+【玄幻元素】
+题材类型：{题材类型}
+情节类型：{情节类型}
+情绪氛围：{情绪氛围}
+
+【输出要求】
+1. 构建完整的玄幻世界观背景
+2. 设计独特的修炼体系或魔法系统
+3. 情节紧凑，悬念迭起
+4. 人物具有鲜明的玄幻特色
+5. 包含精彩的战斗或法术描写
+6. 语言富有古典韵味或奇幻色彩
+7. 传达成长、正义等正面主题
+
+请创作一篇完整的玄幻短篇小说。`,
+      tags: ['短篇小说', '玄幻', '修炼', '魔法', '完整故事'],
+      isDefault: true
+    }
+  ]
 }
 
 const selectPrompt = (prompt) => {
@@ -1463,15 +2174,32 @@ const goToPromptLibrary = () => {
   router.push('/prompts')
 }
 
+// 停止生成
+const stopGeneration = () => {
+  generating.value = false
+  streamingContent.value = ''
+  ElMessage.info('已停止生成')
+}
+
 // 页面初始化时加载配置
 onMounted(() => {
   loadConfigData()
   loadPrompts()
 })
+
+// 组件卸载时销毁编辑器
+onUnmounted(() => {
+  if (editorRef.value) {
+    editorRef.value.destroy()
+  }
+  if (articleEditorRef.value) {
+    articleEditorRef.value.destroy()
+  }
+})
 </script>
 
 <style scoped>
-.short-story {
+.short-story-page {
   width: 100%;
   height: 100vh;
   padding: 20px;
@@ -1479,23 +2207,229 @@ onMounted(() => {
   background: #f5f7fa;
 }
 
-
-.story-workspace {
+/* 新的页面样式 */
+.short-story-page {
+  width: 100%;
+  height: 100vh;
   display: flex;
-  gap: 20px;
-  height: calc(100vh - 120px);
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+  background: #f5f7fa;
 }
 
-.config-panel {
-  width: 320px;
+.page-tabs {
+  flex-shrink: 0;
+  margin-bottom: 20px;
+}
+
+.page-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.workspace {
+  height: 100%;
+}
+
+.workspace-layout {
+  display: flex;
+  gap: 20px;
+  height: 100%;
+}
+
+/* 配置侧边栏样式 */
+.config-sidebar {
+  width: 340px;
   flex-shrink: 0;
   background: white;
   border-radius: 8px;
-  padding: 16px;
+  padding: 20px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.config-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.generate-btn {
+  width: 100%;
+  margin-bottom: 20px;
+  height: 40px;
+  font-weight: 500;
+}
+
+.config-form {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 4px;
+  padding-top: 8px;
+}
+
+/* 配置区域样式 */
+.config-section {
+  margin-bottom: 20px;
+  padding: 16px;
+  background: #fafbfc;
+  border-radius: 8px;
+  border: 1px solid #e4e7ed;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.section-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 网格布局 */
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 16px;
+  align-items: start;
+}
+
+/* 表单项样式 */
+.form-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-item.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-item label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #606266;
+  margin-bottom: 6px;
+  line-height: 1.2;
+}
+
+/* 输入框统一样式 */
+.form-item .el-input,
+.form-item .el-select,
+.form-item .el-input-number {
+  width: 100%;
+}
+
+/* 年龄输入器样式 */
+.age-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+}
+
+.age-display {
+  min-width: 30px;
+  text-align: center;
+  font-weight: 500;
+  color: #2c3e50;
+  font-size: 14px;
+}
+
+.item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.selected-template {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 10px;
+  background: #f0f9ff;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.validation-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: #fef0f0;
+  border: 1px solid #fbc4c4;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #f56c6c;
+}
+
+/* 高级配置样式优化 */
+.advanced-config {
+  margin-top: 16px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  overflow: visible;
+}
+
+.advanced-config .el-collapse-item__header {
+  height: 40px;
+  line-height: 40px;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 0 16px;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.advanced-config .el-collapse-item__content {
+  padding: 16px;
+  background: #fafbfc;
+  min-height: 200px;
+  max-height: none;
+}
+
+.advanced-config .el-collapse-item__wrap {
+  border-bottom: none;
+  overflow: visible;
+}
+
+.advanced-config .el-collapse-item {
+  border-bottom: none;
+}
+
+.advanced-config .form-grid {
+  margin-bottom: 16px;
+}
+
+.advanced-config .full-width {
+  margin-top: 16px;
 }
 
 .config-scroll-container {
@@ -1503,7 +2437,7 @@ onMounted(() => {
   overflow: hidden;
 }
 
-.config-panel .panel-header {
+.config-sidebar .config-header {
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -1533,46 +2467,208 @@ onMounted(() => {
   display: flex;
 }
 
-.config-panel .panel-header h3 {
+.config-sidebar .config-header h3 {
   margin: 0;
   color: #2c3e50;
   font-size: 16px;
 }
 
-.required-items-tip {
-  padding: 4px 8px;
+/* 配置管理对话框样式 */
+.config-manager-dialog {
+  .el-dialog__body {
+    padding: 20px;
+  }
+}
+
+.config-manager-container {
+  height: 600px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.config-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 确保tab标签栏在顶部 */
+.config-tabs :deep(.el-tabs__header) {
+  flex-shrink: 0;
+  margin-bottom: 20px;
+  order: -1;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.config-tabs :deep(.el-tabs__nav-wrap) {
+  margin-bottom: 0;
+  background: white;
+}
+
+.config-tabs :deep(.el-tabs__content) {
+  flex: 1;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* 覆盖可能导致tab下移的样式 */
+.config-tabs :deep(.el-tabs__item) {
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
+}
+
+.config-tab-content {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 0 10px;
+}
+
+.tab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.tab-header h4 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.config-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.config-item-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 1px solid #e9ecef;
+}
+
+.config-input {
+  flex: 1;
+}
+
+.description-input {
+  flex: 2;
+}
+
+.config-item-row .el-button {
+  margin-left: 8px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* 新的配置面板样式 */
+.config-header .header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.required-tip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
   background: #fef0f0;
   border: 1px solid #fbc4c4;
-  border-radius: 3px;
-  font-size: 11px;
-  line-height: 1.3;
-  width: 100%;
-  align-self: stretch;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #f56c6c;
+  margin-top: 8px;
 }
 
-.tip-label {
-  color: #f56c6c;
+.config-form {
+  flex: 1;
+  padding: 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 6px;
+}
+
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-row.two-cols {
+  flex-direction: row;
+  gap: 12px;
+}
+
+.form-row.two-cols > * {
+  flex: 1;
+}
+
+.prompt-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 14px;
   font-weight: 500;
-  margin-right: 3px;
+  color: #2c3e50;
+  margin-bottom: 4px;
 }
 
-.missing-items {
-  display: inline;
+.selected-template {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  background: #f0f9ff;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
-.missing-item {
-  color: #f56c6c;
-  font-size: 11px;
+.reference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.missing-item:not(:last-child)::after {
-  content: "、";
-  margin: 0 1px;
-  color: #f56c6c;
+.reference-item {
+  border: 1px solid #e1e5e9;
+  border-radius: 4px;
+  padding: 8px;
+  background: #fafbfc;
 }
+
+.ref-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #606266;
+}
+
+/* 这些样式已经被新的 .required-tip 替代，保留用于兼容性 */
 
 .config-content {
-  padding-bottom: 20px;
+  padding-bottom: 16px; /* 减小底部内边距 */
 }
 
 .quick-config {
@@ -1635,7 +2731,7 @@ onMounted(() => {
 }
 
 .advanced-config {
-  margin-top: 16px;
+  padding: 10px;
 }
 
 
@@ -1680,27 +2776,7 @@ onMounted(() => {
 
 
 
-.editor-wrapper {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #e4e7ed;
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.editor-wrapper .w-e-text-container {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.editor-wrapper .w-e-text {
-  font-family: 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
-  font-size: 14px;
-  line-height: 1.8;
-  padding: 16px;
-  min-height: 400px;
-}
+/* 旧的编辑器样式已迁移到新版本 */
 
 
 
@@ -1771,48 +2847,6 @@ onMounted(() => {
   color: #409eff;
 }
 
-.ai-assistant {
-  height: 400px;
-  display: flex;
-  flex-direction: column;
-}
-
-.chat-history {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px;
-  background: #f8f9fa;
-  border-radius: 4px;
-  margin-bottom: 16px;
-}
-
-.chat-message {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  max-width: 80%;
-}
-
-.chat-message.user {
-  background: #409eff;
-  color: white;
-  margin-left: auto;
-}
-
-.chat-message.ai {
-  background: white;
-  border: 1px solid #e4e7ed;
-}
-
-.chat-input {
-  display: flex;
-  gap: 8px;
-}
-
-.chat-input .el-input {
-  flex: 1;
-}
-
 @media (max-width: 768px) {
   .story-header {
     flex-direction: column;
@@ -1847,7 +2881,7 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
@@ -2166,7 +3200,353 @@ onMounted(() => {
   margin-top: 12px;
 }
 
-/* 续写弹窗样式 */
+/* 现代续写弹窗样式 */
+.modern-continue-dialog {
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.modern-continue-dialog .el-dialog__header {
+  padding: 0;
+  margin: 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.modern-continue-dialog .el-dialog__body {
+  padding: 24px;
+  background: #fafbfc;
+}
+
+.modern-continue-dialog .el-dialog__footer {
+  padding: 20px 24px;
+  background: #fff;
+  border-top: 1px solid #f0f0f0;
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.header-icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.header-text h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.header-text p {
+  margin: 4px 0 0 0;
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+.close-btn {
+  color: white !important;
+  background: rgba(255, 255, 255, 0.1) !important;
+  border: none !important;
+  border-radius: 8px !important;
+  transition: all 0.3s ease;
+}
+
+.close-btn:hover {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.modern-continue-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  min-height: 500px;
+}
+
+.config-card,
+.result-card {
+  border-radius: 12px;
+  border: 1px solid #e8eaed;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.config-card .el-card__header,
+.result-card .el-card__header {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e8eaed;
+  padding: 16px 20px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.config-content {
+  padding: 20px;
+}
+
+.config-row {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.config-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.config-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+.direction-input {
+  border-radius: 8px;
+}
+
+.direction-input .el-textarea__inner {
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.word-count-slider {
+  margin-top: 8px;
+}
+
+.tips-section {
+  margin-top: 24px;
+  padding: 16px;
+  background: #f0f9ff;
+  border-radius: 8px;
+  border: 1px solid #bae6fd;
+}
+
+.tips-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-weight: 500;
+  color: #0369a1;
+}
+
+.tips-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tip-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #374151;
+}
+
+.result-content {
+  padding: 20px;
+  min-height: 400px;
+}
+
+.streaming-state {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.streaming-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: #f0f9ff;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.streaming-icon {
+  width: 40px;
+  height: 40px;
+  background: #3b82f6;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+}
+
+.rotating {
+  animation: rotate 2s linear infinite;
+}
+
+.streaming-text h4 {
+  margin: 0;
+  color: #1f2937;
+  font-size: 16px;
+}
+
+.streaming-text p {
+  margin: 4px 0 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.streaming-content {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.streaming-text-content {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.result-display {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.result-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 600;
+}
+
+.result-text {
+  flex: 1;
+  padding: 16px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #374151;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: #6b7280;
+}
+
+.empty-icon {
+  margin-bottom: 16px;
+}
+
+.empty-state h4 {
+  margin: 0 0 8px 0;
+  color: #374151;
+  font-size: 16px;
+}
+
+.empty-state p {
+  margin: 0;
+  font-size: 14px;
+  max-width: 280px;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.footer-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.footer-actions {
+  display: flex;
+  gap: 12px;
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* 旧的续写弹窗样式保留 */
 .continue-dialog .el-dialog__body {
   padding: 20px;
 }
@@ -2267,7 +3647,7 @@ onMounted(() => {
   font-size: 14px;
   line-height: 1.6;
   color: #1e40af;
-  flex: 1;
+  height: 300px;
   overflow-y: auto;
   scroll-behavior: smooth;
   white-space: pre-wrap;
@@ -2307,5 +3687,604 @@ onMounted(() => {
 
 .empty-placeholder .el-empty {
   padding: 20px;
+}
+
+/* Tab样式优化 */
+.page-tabs .el-tabs__header {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  padding: 10px 20px;
+  margin: 0 0 20px 0;
+}
+
+.page-tabs .el-tabs__nav-wrap {
+  padding: 0;
+}
+
+.page-tabs .el-tabs__item {
+  font-weight: 500;
+  font-size: 15px;
+  padding: 0 20px;
+  height: 40px;
+  line-height: 40px;
+}
+
+/* 编辑器主体样式 */
+/* 高级配置样式 */
+.advanced-config {
+  margin-top: 16px;
+}
+
+.advanced-config .el-collapse-item__header {
+  font-size: 14px;
+  font-weight: 500;
+  color: #2c3e50;
+}
+
+.age-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.age-display {
+  font-size: 16px;
+  font-weight: 500;
+  color: #2c3e50;
+  min-width: 40px;
+  text-align: center;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-main {
+  flex: 1;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.editor-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e4e7ed;
+  background: #fafbfc;
+}
+
+.editor-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.word-count {
+  font-size: 12px;
+  color: #909399;
+  background: #f0f2f5;
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.editor-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editor-content {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.editor-wrapper {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.editor-wrapper .w-e-toolbar {
+  border-bottom: 1px solid #e4e7ed;
+  background: #fafbfc;
+  flex-shrink: 0;
+}
+
+.editor-wrapper .w-e-text-container {
+  flex: 1;
+  background: white;
+  overflow-y: auto !important;
+  min-height: 400px;
+}
+
+.editor-wrapper .w-e-text-container .w-e-text {
+  min-height: 400px !important;
+  max-height: none !important;
+}
+
+.editor-wrapper .w-e-text-container .w-e-scroll {
+  overflow-y: auto !important;
+  max-height: none !important;
+}
+
+/* 确保 wangEditor 内容区域的滚动 */
+.editor-wrapper :deep(.w-e-text-container) {
+  overflow-y: auto !important;
+  min-height: 400px;
+  max-height: calc(100vh - 300px);
+}
+
+.editor-wrapper :deep(.w-e-text) {
+  min-height: 400px !important;
+  padding: 20px !important;
+  font-family: 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.editor-wrapper :deep(.w-e-scroll) {
+  overflow-y: auto !important;
+  max-height: none !important;
+}
+
+/* 强制显示滚动条 */
+.editor-wrapper :deep(.w-e-text-container),
+.editor-wrapper :deep(.w-e-scroll),
+.editor-wrapper :deep(.w-e-text) {
+  scrollbar-width: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.editor-wrapper :deep(.w-e-text-container)::-webkit-scrollbar,
+.editor-wrapper :deep(.w-e-scroll)::-webkit-scrollbar,
+.editor-wrapper :deep(.w-e-text)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.editor-wrapper :deep(.w-e-text-container)::-webkit-scrollbar-track,
+.editor-wrapper :deep(.w-e-scroll)::-webkit-scrollbar-track,
+.editor-wrapper :deep(.w-e-text)::-webkit-scrollbar-track {
+  background: #f5f5f5;
+  border-radius: 4px;
+}
+
+.editor-wrapper :deep(.w-e-text-container)::-webkit-scrollbar-thumb,
+.editor-wrapper :deep(.w-e-scroll)::-webkit-scrollbar-thumb,
+.editor-wrapper :deep(.w-e-text)::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 4px;
+}
+
+.editor-wrapper :deep(.w-e-text-container)::-webkit-scrollbar-thumb:hover,
+.editor-wrapper :deep(.w-e-scroll)::-webkit-scrollbar-thumb:hover,
+.editor-wrapper :deep(.w-e-text)::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* 生成中状态 */
+.generating-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: white;
+  padding: 20px;
+  z-index: 10;
+}
+
+/* 参考文章样式 */
+.reference-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.reference-item {
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  padding: 12px;
+  background: #f8f9fa;
+}
+
+.ref-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #606266;
+}
+
+.generating-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #e4e7ed;
+  font-weight: 500;
+  color: #409eff;
+}
+
+.streaming-content {
+  line-height: 1.6;
+  color: #2c3e50;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  max-height: 350px;
+  overflow-y: auto;
+}
+
+.prompt-selector {
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-bar {
+  margin-bottom: 16px;
+}
+
+.prompt-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.prompt-item {
+  padding: 16px;
+  border: 1px solid #e1e5e9;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.prompt-item:hover {
+  border-color: #409eff;
+  background: #f0f9ff;
+}
+
+.prompt-title {
+  font-weight: 500;
+  color: #2c3e50;
+  margin-bottom: 8px;
+}
+
+.prompt-description {
+  color: #606266;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.prompt-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 续写对话框样式 */
+.continue-dialog .el-dialog__body {
+  padding: 20px;
+}
+
+.continue-container {
+  height: 500px;
+}
+
+.continue-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.config-section h4 {
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.tips-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #6c757d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.tips-list li {
+  margin-bottom: 4px;
+}
+
+.config-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.continue-result {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 20px;
+  height: 100%;
+}
+
+.result-header h4 {
+  margin: 0 0 12px 0;
+  color: #2c3e50;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.result-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  max-height: 500px;
+}
+
+.continuing-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-style: italic;
+  padding: 20px;
+  justify-content: center;
+}
+
+.continuing-placeholder .loading-icon {
+  font-size: 16px;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.continued-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.continued-text {
+  background: #f0f9ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1e40af;
+  height: 300px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.empty-result {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 优化对话框样式 */
+.optimize-dialog .el-dialog__body {
+  padding: 20px;
+}
+
+.optimize-container {
+  height: 500px;
+}
+
+.optimize-config {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+.selected-text-preview {
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #495057;
+  max-height: 120px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.optimize-result {
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 20px;
+  height: 100%;
+}
+
+.optimizing-placeholder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b7280;
+  font-style: italic;
+  padding: 20px;
+  justify-content: center;
+}
+
+.optimizing-placeholder .loading-icon {
+  font-size: 16px;
+  animation: spin 1s linear infinite;
+}
+
+.optimized-content-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.optimized-content {
+  background: #f0f9ff;
+  border: 1px solid #bfdbfe;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #1e40af;
+  flex: 1;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* 工具栏和按钮样式 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 生成状态提示样式 */
+.generating-status {
+  margin-bottom: 12px;
+}
+
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.status-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.rotating {
+  animation: rotate 1s linear infinite;
+}
+
+@keyframes rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 选段优化状态提示样式 */
+.optimizing-status {
+  margin-bottom: 12px;
+}
+
+.optimizing-status .status-bar {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+  color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(240, 147, 251, 0.3);
+  font-size: 13px;
+}
+
+.optimizing-status .status-info {
+  gap: 6px;
+  font-weight: 500;
+}
+
+/* 文风管理弹窗样式 */
+.writing-style-dialog .el-dialog__body {
+  padding: 20px;
+}
+
+.writing-style-container {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.style-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.style-header h4 {
+  margin: 0;
+  color: #374151;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.style-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.style-item-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+.style-input {
+  flex: 1;
+}
+
+.style-prompt-input {
+  flex: 2;
+}
+
+.style-item-row .el-button {
+  flex-shrink: 0;
 }
 </style>

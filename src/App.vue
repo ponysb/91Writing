@@ -1,11 +1,60 @@
 <template>
   <div id="app">
     <router-view />
+    
+    <!-- 公告对话框 -->
+    <AnnouncementDialog
+      v-model:visible="showAnnouncement"
+      :announcement="currentAnnouncement"
+      @close="handleAnnouncementClose"
+    />
   </div>
 </template>
 
 <script setup>
-// 根组件，主要用于路由视图渲染
+import { ref, onMounted } from 'vue'
+import AnnouncementDialog from './components/AnnouncementDialog.vue'
+import { 
+  hasNewAnnouncement, 
+  getLatestAnnouncement, 
+  markAnnouncementAsRead
+} from './config/announcements.js'
+
+// 公告相关状态
+const showAnnouncement = ref(false)
+const currentAnnouncement = ref({})
+
+// 检查并显示公告
+const checkAnnouncement = () => {
+  try {
+    if (hasNewAnnouncement()) {
+      const latestAnnouncement = getLatestAnnouncement()
+      currentAnnouncement.value = latestAnnouncement
+      
+      // 延迟显示，确保页面完全加载
+      setTimeout(() => {
+        showAnnouncement.value = true
+      }, 1000)
+    }
+  } catch (error) {
+    console.error('检查公告时出错:', error)
+  }
+}
+
+// 处理公告关闭
+const handleAnnouncementClose = () => {
+  const version = currentAnnouncement.value.version
+  
+  // 标记为已读
+  markAnnouncementAsRead(version)
+  
+  showAnnouncement.value = false
+}
+
+onMounted(() => {
+  // 页面加载完成后检查公告
+  checkAnnouncement()
+})
 </script>
 
 <style>

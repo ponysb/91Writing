@@ -13,9 +13,41 @@ class APIService {
   // 加载用户配置
   loadUserConfig() {
     try {
-      const saved = localStorage.getItem('apiConfig')
-      if (saved) {
-        const userConfig = JSON.parse(saved)
+      // 检查新的配置结构
+      const configType = localStorage.getItem('apiConfigType') || 'official'
+      
+      let userConfig = null
+      
+      if (configType === 'official') {
+        // 加载官方配置
+        const saved = localStorage.getItem('officialApiConfig')
+        if (saved) {
+          userConfig = JSON.parse(saved)
+        }
+      } else {
+        // 加载自定义配置
+        const saved = localStorage.getItem('customApiConfig')
+        if (saved) {
+          userConfig = JSON.parse(saved)
+        }
+      }
+      
+      // 如果新配置不存在，尝试加载旧的配置（向后兼容）
+      if (!userConfig) {
+        const oldSaved = localStorage.getItem('apiConfig')
+        if (oldSaved) {
+          userConfig = JSON.parse(oldSaved)
+          // 将旧配置迁移到新结构
+          if (configType === 'official') {
+            localStorage.setItem('officialApiConfig', JSON.stringify(userConfig))
+          } else {
+            localStorage.setItem('customApiConfig', JSON.stringify(userConfig))
+          }
+          localStorage.setItem('apiConfigType', configType)
+        }
+      }
+      
+      if (userConfig) {
         this.config = { ...this.config, ...userConfig }
       }
     } catch (error) {
@@ -31,8 +63,17 @@ class APIService {
   // 更新API配置
   updateConfig(newConfig) {
     this.config = { ...this.config, ...newConfig }
-    // 保存到localStorage
+    // 保存到localStorage（根据配置类型保存到对应位置）
     try {
+      const configType = localStorage.getItem('apiConfigType') || 'official'
+      
+      if (configType === 'official') {
+        localStorage.setItem('officialApiConfig', JSON.stringify(this.config))
+      } else {
+        localStorage.setItem('customApiConfig', JSON.stringify(this.config))
+      }
+      
+      // 同时更新旧的配置键以保持兼容性
       localStorage.setItem('apiConfig', JSON.stringify(this.config))
     } catch (error) {
       console.error('保存API配置失败:', error)
@@ -554,9 +595,19 @@ class APIService {
   }
 
   // 生成章节内容
-  async generateChapterContent(chapterTitle, chapterOutline, previousContent = '', template = null, characters = [], worldSettings = []) {
+  async generateChapterContent(chapterTitle, chapterOutline, previousContent = '', template = null, characters = [], worldSettings = [], novelInfo = {}) {
     const templateInfo = template ? `\n写作风格：${template.style}\n写作提示：${template.writingTips}` : ''
     const contextInfo = previousContent ? `\n前文内容参考：${previousContent.slice(-500)}` : ''
+    
+    // 构建小说基本信息
+    let novelBasicInfo = ''
+    if (novelInfo.title || novelInfo.genre || novelInfo.intro || novelInfo.theme) {
+      novelBasicInfo += '\n\n小说基本信息：'
+      if (novelInfo.title) novelBasicInfo += `\n- 小说名称：${novelInfo.title}`
+      if (novelInfo.genre) novelBasicInfo += `\n- 小说类型：${novelInfo.genre}`
+      if (novelInfo.theme) novelBasicInfo += `\n- 小说主题：${novelInfo.theme}`
+      if (novelInfo.intro) novelBasicInfo += `\n- 小说简介：${novelInfo.intro}`
+    }
     
     // 构建人物信息
     let charactersInfo = ''
@@ -581,7 +632,7 @@ class APIService {
     
     const prompt = `请根据以下信息生成小说章节内容：
 章节标题：${chapterTitle}
-章节大纲：${chapterOutline}${templateInfo}${contextInfo}${charactersInfo}${worldInfo}
+章节大纲：${chapterOutline}${novelBasicInfo}${templateInfo}${contextInfo}${charactersInfo}${worldInfo}
 
 要求：
 1. 字数控制在800-1200字
@@ -592,6 +643,8 @@ class APIService {
 6. 充分利用提供的人物设定和世界观设定
 7. 确保人物行为符合其性格特点
 8. 场景描写要符合世界观设定
+9. 内容要符合小说的整体类型、主题和设定
+10. 保持与小说简介和整体风格的一致性
 
 请直接输出章节内容：`
 
@@ -599,9 +652,19 @@ class APIService {
   }
 
   // 流式生成章节内容
-  async generateChapterContentStream(chapterTitle, chapterOutline, previousContent = '', template = null, characters = [], worldSettings = [], onChunk = null) {
+  async generateChapterContentStream(chapterTitle, chapterOutline, previousContent = '', template = null, characters = [], worldSettings = [], novelInfo = {}, onChunk = null) {
     const templateInfo = template ? `\n写作风格：${template.style}\n写作提示：${template.writingTips}` : ''
     const contextInfo = previousContent ? `\n前文内容参考：${previousContent.slice(-500)}` : ''
+    
+    // 构建小说基本信息
+    let novelBasicInfo = ''
+    if (novelInfo.title || novelInfo.genre || novelInfo.intro || novelInfo.theme) {
+      novelBasicInfo += '\n\n小说基本信息：'
+      if (novelInfo.title) novelBasicInfo += `\n- 小说名称：${novelInfo.title}`
+      if (novelInfo.genre) novelBasicInfo += `\n- 小说类型：${novelInfo.genre}`
+      if (novelInfo.theme) novelBasicInfo += `\n- 小说主题：${novelInfo.theme}`
+      if (novelInfo.intro) novelBasicInfo += `\n- 小说简介：${novelInfo.intro}`
+    }
     
     // 构建人物信息
     let charactersInfo = ''
@@ -626,7 +689,7 @@ class APIService {
     
     const prompt = `请根据以下信息生成小说章节内容：
 章节标题：${chapterTitle}
-章节大纲：${chapterOutline}${templateInfo}${contextInfo}${charactersInfo}${worldInfo}
+章节大纲：${chapterOutline}${novelBasicInfo}${templateInfo}${contextInfo}${charactersInfo}${worldInfo}
 
 要求：
 1. 字数控制在800-1200字
@@ -637,6 +700,8 @@ class APIService {
 6. 充分利用提供的人物设定和世界观设定
 7. 确保人物行为符合其性格特点
 8. 场景描写要符合世界观设定
+9. 内容要符合小说的整体类型、主题和设定
+10. 保持与小说简介和整体风格的一致性
 
 请直接输出章节内容：`
 

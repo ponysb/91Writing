@@ -24,13 +24,7 @@ export default defineConfig({
     }
   },
   server: {
-    port: 3000,
-    open: false,
-    host: '0.0.0.0',
-    allowedHosts: [
-      'localhost',
-      '127.0.0.1',
-      'abc.ztgametv.cn'
-    ]
+    port: 7520,
+    open: true
   }
 })

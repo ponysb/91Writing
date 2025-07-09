@@ -38,6 +38,10 @@
           <el-icon class="mr-2"><Key /></el-icon>
           {{ isApiConfigured ? 'API已配置' : 'API配置' }}
         </el-button>
+        <el-button @click="openAnnouncement" type="primary">
+          <el-icon class="mr-2"><Bell /></el-icon>
+          公告及教程
+        </el-button>
       </div>
     </div>
 
@@ -354,7 +358,7 @@
     </el-dialog>
 
     <!-- API配置对话框 -->
-    <el-dialog v-model="showApiConfigDialog" title="API配置" width="700px">
+    <el-dialog v-model="showApiConfigDialog" title="API配置" width="1000px">
       <ApiConfig />
     </el-dialog>
 
@@ -377,6 +381,13 @@
     <el-dialog v-model="showBackupDialog" title="备份管理" width="1100px">
       <BackupManager />
     </el-dialog>
+
+    <!-- 公告对话框 -->
+    <AnnouncementDialog
+      v-model:visible="showAnnouncementDialog"
+      :announcement="currentAnnouncement"
+      @close="handleAnnouncementClose"
+    />
   </div>
 </template>
 
@@ -384,7 +395,7 @@
 import { ref, computed, onMounted, shallowRef, onBeforeUnmount, watch } from 'vue'
 import { useNovelStore } from '@/stores/novel'
 import { ElMessage } from 'element-plus'
-import { DataAnalysis, Collection, Setting, Key, Document, Loading, Notebook, Aim, FolderOpened } from '@element-plus/icons-vue'
+import { DataAnalysis, Collection, Setting, Key, Document, Loading, Notebook, Aim, FolderOpened, Bell } from '@element-plus/icons-vue'
 import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import { createEditor, createToolbar } from '@wangeditor/editor'
 import '@wangeditor/editor/dist/css/style.css'
@@ -397,6 +408,8 @@ import SummaryGenerator from '@/components/SummaryGenerator.vue'
 import ChapterManager from '@/components/ChapterManager.vue'
 import WritingGoals from '@/components/WritingGoals.vue'
 import BackupManager from '@/components/BackupManager.vue'
+import AnnouncementDialog from '@/components/AnnouncementDialog.vue'
+import { getLatestAnnouncement } from '@/config/announcements.js'
 
 const novelStore = useNovelStore()
 
@@ -432,6 +445,8 @@ const showSummaryDialog = ref(false)
 const showChapterManagerDialog = ref(false)
 const showWritingGoalsDialog = ref(false)
 const showBackupDialog = ref(false)
+const showAnnouncementDialog = ref(false)
+const currentAnnouncement = ref({})
 
 // 新增章节和AI对话相关状态
 const chapters = computed(() => novelStore.chapters)
@@ -759,6 +774,21 @@ const clearOutlineContent = () => {
 const clearChatHistory = () => {
   novelStore.clearChatHistory()
   ElMessage.success('对话历史已清空')
+}
+
+// 公告相关功能
+const openAnnouncement = () => {
+  try {
+    currentAnnouncement.value = getLatestAnnouncement()
+    showAnnouncementDialog.value = true
+  } catch (error) {
+    ElMessage.error('获取公告失败')
+    console.error('获取公告错误:', error)
+  }
+}
+
+const handleAnnouncementClose = () => {
+  showAnnouncementDialog.value = false
 }
 
 const exportNovel = () => {

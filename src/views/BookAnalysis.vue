@@ -49,7 +49,7 @@
               </div>
               <div class="file-actions">
                 <el-button type="text" size="small" @click="rereadWithEncoding" title="重新读取">
-                  <el-icon><Refresh /></el-icon>
+                  重新读取
                 </el-button>
                 <el-button type="text" @click="removeFile" class="remove-btn">
                   <el-icon><Close /></el-icon>
@@ -380,7 +380,6 @@
                         </div>
                         <div class="prompt-buttons">
                           <el-button size="small" @click="resetPromptTemplate">
-                            <el-icon><Refresh /></el-icon>
                             重置默认
                           </el-button>
                           <el-button size="small" type="primary" @click="previewFullPrompt">
@@ -443,7 +442,6 @@
                         </div>
                         <div class="prompt-buttons">
                           <el-button size="small" @click="resetPromptTemplate">
-                            <el-icon><Refresh /></el-icon>
                             重置默认
                           </el-button>
                           <el-button size="small" type="primary" @click="previewFullPrompt">
@@ -464,7 +462,6 @@
                       @click="regenerateChapterSummary"
                       :loading="generatingSummary"
                     >
-                      <el-icon><Refresh /></el-icon>
                       重新解读
                     </el-button>
                   </div>
@@ -2789,4 +2786,4 @@ onMounted(() => {
     padding: 16px;
   }
 }
-</style> 
+</style>

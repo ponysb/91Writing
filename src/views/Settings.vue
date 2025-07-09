@@ -144,8 +144,8 @@
                   <h1>📚 91写作</h1>
                 </div>
                 <div class="app-details">
-                  <p><strong>版本：</strong>v0.6.0</p>
-                  <p><strong>更新时间：</strong>2025年6月26日</p>
+                  <p><strong>版本：</strong>v0.7.0</p>
+                  <p><strong>更新时间：</strong>2025年7月9日</p>
                   <p><strong>开发者：</strong>91写作团队</p>
                   <p><strong>描述：</strong>基于AI技术的智能小说创作辅助工具，提供全方位的写作支持和创作灵感</p>
                 </div>
@@ -218,7 +218,19 @@
                 <h3>📋 更新日志</h3>
                 
                 <div class="log-item current-version">
-                  <h4>v0.6.0 (2025-06-26) - 当前版本</h4>
+                  <h4>v0.7.0 (2025-07-9) - 当前版本</h4>
+                  <ul>
+                    <li>• 优化API配置新增官方默认API</li>
+                    <li>• 增加公告弹窗和教程说明</li>
+                    <li>• 新增切换模型参数下拉框支持随时切换模型</li>
+                    <li>• 短篇小说改为短文创作，新增短文写作及配置</li>
+                    <li>• 优化短篇小说ui和逻辑</li>
+                    <li>• 修复若干bug问题</li>
+                  </ul>
+                </div>
+                
+                <div class="log-item">
+                  <h4>v0.6.0 (2025-06-26)</h4>
                   <ul>
                     <li>• 短篇小说新增续写功能 - 支持自定义续写方向和字数设置</li>
                     <li>• 短篇小说选文优化功能重构 - 可以优化完成之后一键插入</li>
@@ -387,7 +399,7 @@ const exportAllData = () => {
       tokenUsage: JSON.parse(localStorage.getItem('token-usage') || '{}')
     },
     exportTime: new Date().toISOString(),
-    version: 'v0.4.0'
+    version: 'v0.7.0'
   }
   
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
