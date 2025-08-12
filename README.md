@@ -261,7 +261,7 @@ pnpm build
 - 📧 **邮箱支持**: 1090879115@qq.com
 - 🐧 **QQ交流群**: 
 
-<img src=".\image\qrcode_1749609318081.jpg" style="zoom: 25%;" />
+<img src=".\image\qrcode_1749609318081.jpg" style="width: 200px; height: 200px;" />
 
 **微信公众号：**
 <img src=".\image\qrcode_for_gh_3e35b4fbecbe_258.jpg" alt="微信公众号" style="width: 200px; height: 200px;">
