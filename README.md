@@ -261,21 +261,22 @@ pnpm build
 - 📧 **邮箱支持**: 1090879115@qq.com
 - 🐧 **QQ交流群**: 
 
-<img src=".\image\qrcode_1749609318081.jpg" style="width: 200px; height: 200px;" />
+<img src=".\image\qrcode_1749609318081.jpg" style="width: 200px;" />
 
-**微信公众号：**
+**微信公众号：**:
+
 <img src=".\image\qrcode_for_gh_3e35b4fbecbe_258.jpg" alt="微信公众号" style="width: 200px; height: 200px;">
 
+-------
 
-
-# 商用版
+# 🏬 商用版
 - 支持私有化部署和源码买断
 - 加群联系群主购买
 
 ## 功能思维导图
 <img src="./image/91写作商用版简洁思维导图.png" alt="微信公众号" style="width: 500px;">
 
-
+-------
 ### 🤝 贡献指南
 我们欢迎所有形式的贡献！
 
