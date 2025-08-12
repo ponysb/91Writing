@@ -274,7 +274,7 @@ pnpm build
 - 加群联系群主购买
 
 ## 功能思维导图
-<img src="./image/91写作商用版简洁思维导图.png" alt="微信公众号" style="width: 500px;">
+<img src="./image/91写作商用版简洁思维导图.png" alt="微信公众号" style="width: 800px;">
 
 -------
 ### 🤝 贡献指南
