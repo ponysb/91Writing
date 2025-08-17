@@ -1,0 +1,37 @@
+{
+  "name": "ai小说商业自己编写版",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node app.js",
+    "dev": "node app.js",
+    "test-db": "node scripts/test-db-connection.js",
+    "init-db": "node scripts/init-database.js",
+    "reset-db": "node scripts/init-database.js --reset"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.13.1",
+  "dependencies": {
+    "@koa/cors": "^5.0.0",
+    "@koa/multer": "^4.0.0",
+    "archiver": "^7.0.1",
+    "axios": "^1.10.0",
+    "bcryptjs": "^2.4.3",
+    "crypto-js": "^4.2.0",
+    "dotenv": "^16.4.7",
+    "jsonwebtoken": "^9.0.2",
+    "koa": "^2.15.3",
+    "koa-bodyparser": "^4.4.1",
+    "koa-router": "^12.0.1",
+    "koa-static": "^5.0.0",
+    "multer": "^2.0.2",
+    "mysql2": "^3.6.5",
+    "sequelize": "^6.37.5",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0"
+  }
+}
