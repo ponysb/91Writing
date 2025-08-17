@@ -1,0 +1,32 @@
+{
+  "name": "my-vue-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.11.0",
+    "echarts": "^6.0.0",
+    "element-plus": "^2.10.4",
+    "highlight.js": "^11.11.1",
+    "marked": "^16.1.2",
+    "pinia": "^3.0.3",
+    "simple-mind-map": "0.14.0-fix.1",
+    "vditor": "^3.11.1",
+    "vue": "^3.5.17",
+    "vue-echarts": "^7.0.3",
+    "vue-i18n": "^9.14.5",
+    "vue-router": "^4.5.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "terser": "^5.43.1",
+    "vite": "^7.0.4",
+    "vite-plugin-compression": "^0.5.1"
+  }
+}
