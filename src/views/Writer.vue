@@ -312,10 +312,16 @@
             <template #header>
               <div class="card-header">
                 <span>📊 事件时间线</span>
-                <el-button size="small" type="primary" @click="addEvent">
-                  <el-icon><Plus /></el-icon>
-                  新增
-                </el-button>
+                <div class="header-actions">
+                  <el-button size="small" @click="addEvent">
+                    <el-icon><Plus /></el-icon>
+                    手动创建
+                  </el-button>
+                  <el-button size="small" type="primary" @click="openAIGenerateDialog">
+                    <el-icon><MagicStick /></el-icon>
+                    AI生成事件
+                  </el-button>
+                </div>
               </div>
             </template>
             
@@ -364,8 +370,22 @@
               </div>
               
               <div v-if="events.length === 0" class="empty-state">
-                <p>暂无事件记录</p>
-                <el-button size="small" @click="addEvent">添加第一个事件</el-button>
+                <div class="empty-content">
+                  <el-icon class="empty-icon"><Calendar /></el-icon>
+                  <h3>暂无事件记录</h3>
+                  <p>让AI帮您快速生成故事事件时间线</p>
+                  
+                  <div class="empty-actions">
+                    <el-button type="primary" @click="openAIGenerateDialog">
+                      <el-icon><MagicStick /></el-icon>
+                      AI智能生成
+                    </el-button>
+                    <el-button @click="addEvent">
+                      <el-icon><Plus /></el-icon>
+                      手动创建
+                    </el-button>
+                  </div>
+                </div>
               </div>
             </div>
           </el-card>
@@ -646,6 +666,194 @@
       <template #footer>
         <el-button @click="showCorpusDialog = false">取消</el-button>
         <el-button type="primary" @click="saveCorpus">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI生成事件对话框 -->
+    <el-dialog 
+      v-model="showAIGenerateDialog" 
+      title="🤖 AI智能生成事件时间线" 
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <!-- 生成配置区域 -->
+      <div class="ai-generate-config">
+        <el-form :model="aiGenerateForm" label-width="100px">
+          <!-- 生成模式选择 -->
+          <el-form-item label="生成模式">
+            <el-radio-group v-model="aiGenerateForm.mode">
+              <el-radio label="timeline">时间线生成</el-radio>
+              <el-radio label="chapter">章节事件</el-radio>
+              <el-radio label="conflict">冲突事件</el-radio>
+              <el-radio label="character">角色事件</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          
+          <!-- 生成参数 -->
+          <div v-if="aiGenerateForm.mode === 'timeline'">
+            <el-form-item label="时间跨度">
+              <el-input-number v-model="aiGenerateForm.timelineSpan" :min="1" :max="30" />
+              <span class="form-tip">天</span>
+            </el-form-item>
+          </div>
+          
+          <div v-if="aiGenerateForm.mode === 'chapter'">
+            <el-form-item label="目标章节">
+              <el-select v-model="aiGenerateForm.targetChapter" placeholder="选择章节">
+                <el-option 
+                  v-for="chapter in chapters" 
+                  :key="chapter.id" 
+                  :label="chapter.title" 
+                  :value="chapter.title" 
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+          
+          <!-- 生成数量 -->
+          <el-form-item label="生成数量">
+            <el-input-number v-model="aiGenerateForm.count" :min="1" :max="10" />
+            <span class="form-tip">个事件</span>
+          </el-form-item>
+          
+          <!-- 事件类型偏好 -->
+          <el-form-item label="事件类型">
+            <el-checkbox-group v-model="aiGenerateForm.eventTypes">
+              <el-checkbox label="action">动作/战斗</el-checkbox>
+              <el-checkbox label="dialogue">对话/交流</el-checkbox>
+              <el-checkbox label="emotion">情感/心理</el-checkbox>
+              <el-checkbox label="plot">剧情转折</el-checkbox>
+              <el-checkbox label="world">世界观展示</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+          
+          <!-- 章节约束 -->
+          <el-form-item label="约束章节">
+            <div class="chapter-constraint-selector">
+              <el-checkbox-group v-model="aiGenerateForm.chapterConstraints.selectedChapters">
+                <div class="chapter-grid">
+                  <div 
+                    v-for="chapter in chapters" 
+                    :key="chapter.id"
+                    class="chapter-option"
+                  >
+                    <el-checkbox :label="chapter.id">
+                      <div class="chapter-info">
+                        <div class="chapter-header">
+                          <h4>{{ chapter.title }}</h4>
+                          <el-tag :type="getChapterStatusType(chapter.status)" size="small">
+                            {{ getChapterStatusText(chapter.status) }}
+                          </el-tag>
+                        </div>
+                        <div class="chapter-meta">
+                          <span class="word-count">{{ chapter.wordCount || 0 }}字</span>
+                          <span class="update-time">{{ formatDate(chapter.updatedAt) }}</span>
+                        </div>
+                      </div>
+                    </el-checkbox>
+                  </div>
+                </div>
+              </el-checkbox-group>
+            </div>
+          </el-form-item>
+          
+          <!-- 时间线模式 -->
+          <el-form-item label="时间线模式">
+            <el-radio-group v-model="aiGenerateForm.chapterConstraints.timelineMode">
+              <el-radio label="continue">延续时间线</el-radio>
+              <el-radio label="restart">重新开始</el-radio>
+              <el-radio label="forward">向前发展</el-radio>
+              <el-radio label="backward">回溯补充</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          
+          <!-- 自定义提示 -->
+          <el-form-item label="特殊要求">
+            <el-input 
+              v-model="aiGenerateForm.customPrompt" 
+              type="textarea" 
+              :rows="3"
+              placeholder="如：重点突出主角的成长，增加悬疑元素..."
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      
+      <!-- 生成结果区域 -->
+      <div v-if="aiGeneratedEvents.length > 0" class="ai-generate-results">
+        <h4>🎯 生成结果预览</h4>
+        <div class="events-preview">
+          <div class="preview-header">
+            <el-checkbox 
+              v-model="selectAll" 
+              :indeterminate="isIndeterminate"
+              @change="handleSelectAll"
+            >
+              全选 ({{ selectedEventsCount }}/{{ aiGeneratedEvents.length }})
+            </el-checkbox>
+          </div>
+          
+          <div class="events-list">
+            <div 
+              v-for="(event, index) in aiGeneratedEvents" 
+              :key="index"
+              class="event-preview-item"
+              :class="{ 'selected': event.selected }"
+            >
+              <div class="event-preview-content">
+                <div class="event-header">
+                  <el-checkbox v-model="event.selected" />
+                  <h4 class="event-title">{{ event.title }}</h4>
+                  <el-tag :type="getImportanceType(event.importance)" size="small">
+                    {{ getImportanceText(event.importance) }}
+                  </el-tag>
+                </div>
+                
+                <p class="event-description">{{ event.description }}</p>
+                
+                <div class="event-meta">
+                  <div class="meta-item">
+                    <el-icon><Clock /></el-icon>
+                    <span>{{ event.time }}</span>
+                  </div>
+                  <div class="meta-item">
+                    <el-icon><Document /></el-icon>
+                    <span>{{ event.chapter }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 操作按钮 -->
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showAIGenerateDialog = false">取消</el-button>
+          <el-button @click="regenerateEvents" :loading="isGenerating">
+            <el-icon><Refresh /></el-icon>
+            重新生成
+          </el-button>
+          <el-button 
+            v-if="aiGeneratedEvents.length === 0"
+            type="primary" 
+            @click="generateEventsWithAI" 
+            :loading="isGenerating"
+          >
+            <el-icon><MagicStick /></el-icon>
+            开始生成
+          </el-button>
+          <el-button 
+            v-else
+            type="primary" 
+            @click="confirmAddEvents" 
+            :disabled="selectedEventsCount === 0"
+          >
+            <el-icon><Check /></el-icon>
+            添加选中事件 ({{ selectedEventsCount }})
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -2431,6 +2639,30 @@ const eventForm = ref({
   importance: 'normal'
 })
 
+// AI生成事件相关数据
+const showAIGenerateDialog = ref(false)
+const aiGenerateForm = ref({
+  mode: 'timeline',
+  timelineSpan: 7,
+  targetChapter: '',
+  count: 5,
+  eventTypes: ['action', 'dialogue', 'emotion'],
+  customPrompt: '',
+  chapterConstraints: {
+    enabled: true,
+    selectedChapters: [],
+    timelineMode: 'continue',
+    chapterOrder: 'chronological',
+    timeReference: 'relative',
+    customTimeOffset: 0,
+    includeChapterEvents: true,
+    analyzeChapterContent: true
+  }
+})
+
+const aiGeneratedEvents = ref([])
+const isGenerating = ref(false)
+
 // 编辑器配置
 const toolbarConfig = {}
 const editorConfig = {
@@ -3905,9 +4137,10 @@ const getCorpusTypeText = (type) => {
 // 获取事件重要性样式
 const getImportanceType = (importance) => {
   const typeMap = {
-    'high': 'danger',
+    'low': 'info',
     'normal': 'primary',
-    'low': 'info'
+    'high': 'warning',
+    'critical': 'danger'
   }
   return typeMap[importance] || 'primary'
 }
@@ -7576,6 +7809,356 @@ const handleEventAction = (command, event) => {
   }
 }
 
+// AI生成事件相关方法
+const openAIGenerateDialog = () => {
+  showAIGenerateDialog.value = true
+  // 初始化时自动选择当前章节
+  if (currentChapter.value) {
+    aiGenerateForm.value.chapterConstraints.selectedChapters = [currentChapter.value.id]
+  }
+}
+
+const generateEventsWithAI = async () => {
+  try {
+    isGenerating.value = true
+    console.log('🤖 开始AI生成事件...')
+    
+    // 构建AI提示词
+    let prompt = buildEventGenerationPrompt()
+    console.log('📝 构建的提示词:', prompt.substring(0, 200) + '...')
+    
+    try {
+      // 调用AI API
+      const response = await apiService.generateTextStream(prompt, {}, null)
+      console.log('📦 AI响应:', response.substring(0, 200) + '...')
+      
+      // 解析AI响应
+      const events = parseAIEventResponse(response)
+      console.log('✅ 解析出事件:', events.length)
+      
+      // 处理生成结果
+      aiGeneratedEvents.value = events.map(event => ({
+        ...event,
+        selected: true,  // 默认全选
+        id: null,        // 待保存时生成
+        createdAt: new Date()
+      }))
+      
+      ElMessage.success(`成功生成 ${events.length} 个事件`)
+      
+    } catch (apiError) {
+      // 如果API调用失败，尝试使用简化的提示词
+      if (apiError.message.includes('sensitive_words_detected')) {
+        console.log('⚠️ 检测到敏感词，尝试使用简化提示词...')
+        prompt = buildSimpleEventPrompt()
+        
+        const response = await apiService.generateTextStream(prompt, {}, null)
+        const events = parseAIEventResponse(response)
+        
+        aiGeneratedEvents.value = events.map(event => ({
+          ...event,
+          selected: true,
+          id: null,
+          createdAt: new Date()
+        }))
+        
+        ElMessage.success(`使用简化模式生成 ${events.length} 个事件`)
+      } else {
+        throw apiError
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ AI生成事件失败:', error)
+    ElMessage.error('生成失败: ' + error.message)
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// 简化的提示词构建（用于敏感词检测时）
+const buildSimpleEventPrompt = () => {
+  const { count, eventTypes } = aiGenerateForm.value
+  const novelInfo = getNovelContextInfo()
+  
+  let prompt = `请为小说《${novelInfo.title}》生成${count}个故事情节事件。\n\n`
+  prompt += `小说类型：${novelInfo.genre}\n`
+  prompt += `主要角色：${novelInfo.mainCharacters.join('、')}\n\n`
+  
+  if (eventTypes.length > 0) {
+    const typeMap = {
+      'action': '动作情节',
+      'dialogue': '对话交流', 
+      'emotion': '情感表达',
+      'plot': '剧情发展',
+      'world': '世界观展示'
+    }
+    const typeTexts = eventTypes.map(type => typeMap[type] || type)
+    prompt += `事件类型：${typeTexts.join('、')}\n\n`
+  }
+  
+  prompt += `请返回JSON格式：\n`
+  prompt += `[{"title": "事件标题", "description": "详细描述", "time": "时间点", "chapter": "相关章节", "importance": "normal", "tags": ["标签"]}]\n`
+  
+  return prompt
+}
+
+// 获取小说上下文信息
+const getNovelContextInfo = () => {
+  return {
+    title: currentNovel.value?.title || '未命名小说',
+    genre: currentNovel.value?.genre || '未知类型',
+    chapterCount: chapters.value?.length || 0,
+    mainCharacters: characters.value?.slice(0, 5).map(c => c.name) || [],
+    currentChapter: currentChapter.value?.title || '',
+    totalWordCount: chapters.value?.reduce((sum, c) => sum + (c.wordCount || 0), 0) || 0
+  }
+}
+
+const buildEventGenerationPrompt = () => {
+  const { mode, count, eventTypes, customPrompt, chapterConstraints } = aiGenerateForm.value
+  const novelInfo = getNovelContextInfo()
+  
+  let basePrompt = `请为小说《${novelInfo.title}》生成${count}个故事情节事件，要求内容健康积极：\n\n`
+  
+  // 根据模式添加特定要求
+  switch (mode) {
+    case 'timeline':
+      basePrompt += `时间跨度：${aiGenerateForm.value.timelineSpan}天\n`
+      basePrompt += `需要保持时间逻辑的连贯性\n`
+      break
+    case 'chapter':
+      basePrompt += `目标章节：${aiGenerateForm.value.targetChapter}\n`
+      basePrompt += `事件要与该章节内容紧密相关\n`
+      break
+    case 'conflict':
+      basePrompt += `重点生成推动剧情发展的情节转折\n`
+      basePrompt += `要有戏剧性和可读性\n`
+      break
+    case 'character':
+      basePrompt += `围绕主要角色生成发展事件\n`
+      basePrompt += `体现角色成长和变化\n`
+      break
+  }
+  
+  // 添加事件类型要求
+  if (eventTypes.length > 0) {
+    const typeMap = {
+      'action': '动作情节',
+      'dialogue': '对话交流',
+      'emotion': '情感表达',
+      'plot': '剧情发展',
+      'world': '世界观展示'
+    }
+    const typeTexts = eventTypes.map(type => typeMap[type] || type)
+    basePrompt += `事件类型偏好：${typeTexts.join('、')}\n`
+  }
+  
+  // 添加自定义要求
+  if (customPrompt.trim()) {
+    basePrompt += `特殊要求：${customPrompt}\n`
+  }
+  
+  // 添加小说上下文
+  basePrompt += `\n小说信息：\n`
+  basePrompt += `类型：${novelInfo.genre}\n`
+  basePrompt += `当前章节数：${novelInfo.chapterCount}\n`
+  basePrompt += `主要角色：${novelInfo.mainCharacters.join('、')}\n`
+  
+  // 添加现有事件作为参考
+  if (events.value.length > 0) {
+    basePrompt += `\n现有事件参考：\n`
+    events.value.slice(-3).forEach(event => {
+      basePrompt += `- ${event.title} (${event.time}): ${event.description}\n`
+    })
+  }
+  
+  // 章节约束
+  if (chapterConstraints.enabled && chapterConstraints.selectedChapters.length > 0) {
+    const selectedChapters = chapterConstraints.selectedChapters.map(id =>
+      chapters.value.find(c => c.id === id)
+    ).filter(Boolean)
+    
+    basePrompt += `\n【章节约束要求】\n`
+    basePrompt += `基于以下章节生成事件：\n`
+    
+    selectedChapters.forEach((chapter, index) => {
+      basePrompt += `${index + 1}. ${chapter.title}\n`
+      // 只取前100个字符，避免内容过长
+      const contentPreview = chapter.content?.substring(0, 100) || '暂无内容'
+      basePrompt += `   内容概要：${contentPreview}...\n`
+      basePrompt += `   字数：${chapter.wordCount || 0}字\n`
+      basePrompt += `   状态：${getChapterStatusText(chapter.status)}\n\n`
+    })
+    
+    // 时间线模式要求
+    const timelineModeText = {
+      continue: '延续时间线',
+      restart: '重新开始',
+      forward: '向前发展',
+      backward: '回溯补充'
+    }
+    
+    basePrompt += `时间线模式：${timelineModeText[chapterConstraints.timelineMode]}\n`
+    
+    switch (chapterConstraints.timelineMode) {
+      case 'continue':
+        basePrompt += `- 在现有时间线基础上继续发展\n`
+        basePrompt += `- 保持与前面章节的时间连续性\n`
+        break
+      case 'restart':
+        basePrompt += `- 从指定章节开始新的时间线\n`
+        basePrompt += `- 可以重新定义时间起点\n`
+        break
+      case 'forward':
+        basePrompt += `- 生成未来时间的事件\n`
+        basePrompt += `- 时间偏移：${chapterConstraints.customTimeOffset}天后\n`
+        break
+      case 'backward':
+        basePrompt += `- 补充过去时间的事件\n`
+        basePrompt += `- 时间偏移：${chapterConstraints.customTimeOffset}天前\n`
+        break
+    }
+  }
+  
+  // 输出格式要求
+  basePrompt += `\n请严格按照以下JSON格式返回，内容要健康积极：\n`
+  basePrompt += `[{\n`
+  basePrompt += `  "title": "事件标题",\n`
+  basePrompt += `  "description": "详细描述",\n`
+  basePrompt += `  "time": "时间点（如：第三天傍晚）",\n`
+  basePrompt += `  "chapter": "相关章节",\n`
+  basePrompt += `  "importance": "normal|high|critical",\n`
+  basePrompt += `  "tags": ["标签1", "标签2"]\n`
+  basePrompt += `}]\n`
+  
+  return basePrompt
+}
+
+const parseAIEventResponse = (response) => {
+  try {
+    // 尝试直接解析JSON
+    const events = JSON.parse(response)
+    
+    // 验证数据结构
+    if (!Array.isArray(events)) {
+      throw new Error('AI返回格式错误：应为数组')
+    }
+    
+    // 验证每个事件的基本字段
+    return events.map((event, index) => {
+      if (!event.title || !event.description) {
+        throw new Error(`第${index + 1}个事件缺少必要字段`)
+      }
+      
+      return {
+        title: event.title || `事件${index + 1}`,
+        description: event.description || '暂无描述',
+        time: event.time || '时间待定',
+        chapter: event.chapter || currentChapter.value?.title || '',
+        importance: ['low', 'normal', 'high', 'critical'].includes(event.importance) 
+          ? event.importance 
+          : 'normal',
+        tags: event.tags || []
+      }
+    })
+    
+  } catch (error) {
+    console.error('解析AI响应失败:', error)
+    
+    // 降级处理：尝试从文本中提取事件信息
+    return extractEventsFromText(response)
+  }
+}
+
+const extractEventsFromText = (text) => {
+  const events = []
+  const lines = text.split('\n').filter(line => line.trim())
+  
+  lines.forEach((line, index) => {
+    // 简单的文本解析逻辑
+    if (line.includes('：') || line.includes(':')) {
+      const [title, ...descParts] = line.split(/[：:]/)
+      events.push({
+        title: title.trim(),
+        description: descParts.join(':').trim() || '暂无描述',
+        time: '时间待定',
+        chapter: currentChapter.value?.title || '',
+        importance: 'normal',
+        tags: []
+      })
+    }
+  })
+  
+  return events
+}
+
+// 计算属性和方法
+const selectedEventsCount = computed(() => {
+  return aiGeneratedEvents.value.filter(event => event.selected).length
+})
+
+const selectAll = computed({
+  get: () => aiGeneratedEvents.value.length > 0 && selectedEventsCount.value === aiGeneratedEvents.value.length,
+  set: (value) => {
+    aiGeneratedEvents.value.forEach(event => {
+      event.selected = value
+    })
+  }
+})
+
+const isIndeterminate = computed(() => {
+  const count = selectedEventsCount.value
+  return count > 0 && count < aiGeneratedEvents.value.length
+})
+
+const handleSelectAll = () => {
+  // 已在computed中处理
+}
+
+const regenerateEvents = () => {
+  generateEventsWithAI()
+}
+
+const confirmAddEvents = () => {
+  const selectedEvents = aiGeneratedEvents.value.filter(event => event.selected)
+  
+  if (selectedEvents.length === 0) {
+    ElMessage.warning('请至少选择一个事件')
+    return
+  }
+  
+  // 添加到事件列表
+  selectedEvents.forEach(event => {
+    const newEvent = {
+      ...event,
+      id: Date.now() + Math.random(), // 生成唯一ID
+      createdAt: new Date()
+    }
+    events.value.push(newEvent)
+  })
+  
+  // 保存数据
+  saveNovelData()
+  
+  // 关闭对话框
+  showAIGenerateDialog.value = false
+  aiGeneratedEvents.value = []
+  
+  ElMessage.success(`成功添加 ${selectedEvents.length} 个事件`)
+}
+
+// 重要程度相关方法
+const getImportanceText = (importance) => {
+  const textMap = {
+    low: '次要',
+    normal: '一般',
+    high: '重要',
+    critical: '关键'
+  }
+  return textMap[importance] || '一般'
+}
+
 // 更新章节状态
 const updateChapterStatus = () => {
   if (!currentChapter.value) return
@@ -10789,6 +11372,182 @@ ${customPrompt}`
   border-color: #409eff;
   background-color: #ecf5ff;
   box-shadow: 0 0 0 1px #409eff;
+}
+
+/* AI生成事件相关样式 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-content {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  color: #c0c4cc;
+  margin-bottom: 16px;
+}
+
+.empty-content h3 {
+  margin: 16px 0 8px;
+  color: #606266;
+}
+
+.empty-content p {
+  color: #909399;
+  margin-bottom: 24px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.ai-generate-config {
+  margin-bottom: 20px;
+}
+
+.form-tip {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.chapter-constraint-selector {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.chapter-option {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.3s;
+}
+
+.chapter-option:hover {
+  border-color: #409eff;
+  background-color: #f0f9ff;
+}
+
+.chapter-info {
+  margin-left: 8px;
+}
+
+.chapter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.chapter-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #303133;
+}
+
+.chapter-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.ai-generate-results {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.events-preview {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.preview-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.event-preview-item {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 16px;
+  transition: all 0.3s;
+}
+
+.event-preview-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+}
+
+.event-preview-item.selected {
+  border-color: #409eff;
+  background-color: #f0f9ff;
+}
+
+.event-preview-content {
+  margin-left: 8px;
+}
+
+.event-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.event-title {
+  margin: 0;
+  font-size: 16px;
+  color: #303133;
+  flex: 1;
+}
+
+.event-description {
+  margin: 8px 0;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.event-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .character-header {
