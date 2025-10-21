@@ -189,13 +189,16 @@
         <el-form-item label="标签">
           <el-input 
             v-model="tagInput"
-            placeholder="输入标签后按回车添加"
+            placeholder="输入标签，支持用逗号、分号、空格分隔批量添加"
             @keyup.enter="addTag"
           >
             <template #append>
               <el-button @click="addTag">添加</el-button>
             </template>
           </el-input>
+          <el-text type="info" size="small" style="margin-top: 4px; display: block;">
+            💡 提示：可以输入"创意,写作,角色"一次性添加多个标签
+          </el-text>
           <div class="tags-display" v-if="promptForm.tags.length > 0">
             <el-tag 
               v-for="(tag, index) in promptForm.tags"
@@ -314,6 +317,7 @@ import {
   Plus, Search, MoreFilled, Edit, CopyDocument, 
   Delete, Upload, UploadFilled
 } from '@element-plus/icons-vue'
+import storageService from '@/services/storage.js'
 
 // 响应式数据
 const activeCategory = ref('all')
@@ -511,9 +515,24 @@ const insertFormatTemplate = () => {
 }
 
 const addTag = () => {
-  if (tagInput.value.trim() && !promptForm.value.tags.includes(tagInput.value.trim())) {
-    promptForm.value.tags.push(tagInput.value.trim())
+  const input = tagInput.value.trim()
+  if (!input) return
+  
+  // 支持多种分隔符：逗号、分号、空格、中文逗号、中文分号
+  const separators = /[,，;；\s]+/
+  const newTags = input.split(separators)
+    .map(tag => tag.trim())
+    .filter(tag => tag && !promptForm.value.tags.includes(tag))
+  
+  if (newTags.length > 0) {
+    promptForm.value.tags.push(...newTags)
     tagInput.value = ''
+    
+    if (newTags.length > 1) {
+      ElMessage.success(`已添加 ${newTags.length} 个标签：${newTags.join('、')}`)
+    }
+  } else {
+    ElMessage.warning('标签已存在或输入为空')
   }
 }
 
@@ -714,21 +733,42 @@ onMounted(() => {
   loadPrompts()
 })
 
-// 加载提示词数据
+// 加载提示词数据（增强版，包含数据恢复）
 const loadPrompts = () => {
-  const savedPrompts = localStorage.getItem('prompts')
-  if (savedPrompts) {
-    try {
+  try {
+    // 尝试从localStorage加载
+    const savedPrompts = localStorage.getItem('prompts')
+    if (savedPrompts) {
       const parsed = JSON.parse(savedPrompts)
       prompts.value = parsed
-    } catch (error) {
-      console.error('加载提示词失败:', error)
+    } else {
+      // 主数据不存在，尝试从备份恢复
+      console.log('📂 提示词主数据不存在，尝试从备份恢复')
+      const backupData = storageService.load('prompts')
+      if (backupData && backupData.length > 0) {
+        prompts.value = backupData
+        ElMessage.success('🔄 已从备份恢复提示词数据')
+        savePrompts()
+      } else {
+        // 如果没有备份，使用默认数据
+        prompts.value = getDefaultPrompts()
+        savePrompts()
+      }
+    }
+  } catch (error) {
+    console.error('❌ 加载提示词失败:', error)
+    ElMessage.error('提示词数据加载失败，尝试从备份恢复...')
+    
+    // 尝试从增强存储恢复
+    const backupData = storageService.load('prompts')
+    if (backupData && backupData.length > 0) {
+      prompts.value = backupData
+      ElMessage.success('🔄 已从备份恢复提示词数据')
+      savePrompts()
+    } else {
       prompts.value = getDefaultPrompts()
       savePrompts()
     }
-  } else {
-    prompts.value = getDefaultPrompts()
-    savePrompts()
   }
 }
 
@@ -1327,12 +1367,16 @@ const getDefaultPrompts = () => {
   ]
 }
 
-// 保存提示词数据
+// 保存提示词数据（增强版，包含备份）
 const savePrompts = () => {
   try {
     localStorage.setItem('prompts', JSON.stringify(prompts.value))
+    
+    // 同时使用增强存储保存备份
+    storageService.save('prompts', prompts.value)
+    console.log('💾 提示词数据保存成功，已创建备份')
   } catch (error) {
-    console.error('保存提示词失败:', error)
+    console.error('❌ 保存提示词失败:', error)
   }
 }
 </script>

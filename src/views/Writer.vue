@@ -547,11 +547,18 @@
           </div>
         </el-form-item>
         <el-form-item label="标签">
-          <el-input v-model="characterTagInput" placeholder="输入标签后按回车" @keyup.enter="addCharacterTag">
+          <el-input 
+            v-model="characterTagInput" 
+            placeholder="输入标签，支持用逗号、分号、空格分隔批量添加" 
+            @keyup.enter="addCharacterTag"
+          >
             <template #append>
               <el-button @click="addCharacterTag">添加</el-button>
             </template>
           </el-input>
+          <el-text type="info" size="small" style="margin-top: 4px; display: block;">
+            💡 提示：可以输入"温柔,聪慧,知识分子"一次性添加多个标签
+          </el-text>
           <div v-if="characterForm.tags.length > 0" style="margin-top: 8px;">
             <el-tag 
               v-for="(tag, index) in characterForm.tags" 
@@ -2134,6 +2141,8 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import apiService from '../services/api.js'
 import billingService from '../services/billing.js'
+import storageService from '../services/storage.js'
+import db from '../services/simpleDB.js'
 import { useNovelStore } from '../stores/novel.js'
 
 const route = useRoute()
@@ -5889,10 +5898,13 @@ ${customPrompt}
     }
     
     ElMessage.success('AI角色生成完成')
+    console.log('AI角色生成成功完成')
   } catch (error) {
     console.error('AI生成角色失败:', error)
+    console.error('错误详情:', error.stack)
     ElMessage.error(`角色生成失败: ${error.message}`)
   } finally {
+    console.log('AI角色生成流程结束，重置状态')
     isStreaming.value = false
     streamingContent.value = ''
   }
@@ -7146,13 +7158,25 @@ const saveCharacter = () => {
 
 // AI生成角色
 const generateCharacterAI = async () => {
-  if (!checkApiAndBalance()) return
+  console.log('=== 开始AI生成角色 ===')
+  console.log('角色名称:', characterForm.value.name)
+  console.log('当前小说:', currentNovel.value)
+  console.log('API配置检查...')
+  
+  if (!checkApiAndBalance()) {
+    console.log('API检查失败')
+    return
+  }
+  
+  console.log('API检查通过')
   
   if (!characterForm.value.name.trim()) {
+    console.log('角色名称为空')
     ElMessage.warning('请先输入角色姓名')
     return
   }
   
+  console.log('开始设置流式生成状态')
   // 设置流式生成状态
   isStreaming.value = true
   streamingType.value = 'character'
@@ -7224,12 +7248,14 @@ const generateCharacterAI = async () => {
     console.log('=== 单个角色生成最终提示词 ===')
     console.log(promptWithFormat)
     console.log('=== 提示词结束 ===')
+    console.log('准备调用 API...')
 
     const aiResponse = await apiService.generateTextStream(promptWithFormat, {
       maxTokens: null, // 移除token限制
       temperature: 0.8,
       type: 'character'
     }, (chunk, fullContent) => {
+      console.log('收到流式数据，chunk长度:', chunk.length, '总长度:', fullContent.length)
       // 实时更新流式内容
       streamingContent.value = fullContent
       
@@ -7279,10 +7305,24 @@ const generateCharacterAI = async () => {
 }
 
 const addCharacterTag = () => {
-  const tag = characterTagInput.value.trim()
-  if (tag && !characterForm.value.tags.includes(tag)) {
-    characterForm.value.tags.push(tag)
+  const input = characterTagInput.value.trim()
+  if (!input) return
+  
+  // 支持多种分隔符：逗号、分号、空格、中文逗号、中文分号
+  const separators = /[,，;；\s]+/
+  const newTags = input.split(separators)
+    .map(tag => tag.trim())
+    .filter(tag => tag && !characterForm.value.tags.includes(tag))
+  
+  if (newTags.length > 0) {
+    characterForm.value.tags.push(...newTags)
     characterTagInput.value = ''
+    
+    if (newTags.length > 1) {
+      ElMessage.success(`已添加 ${newTags.length} 个标签：${newTags.join('、')}`)
+    }
+  } else {
+    ElMessage.warning('标签已存在或输入为空')
   }
 }
 
@@ -7607,85 +7647,145 @@ const autoSave = () => {
 const saveNovelData = () => {
   if (!currentNovel.value) return
   
-  const totalWordCount = chapters.value.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
-  
-  const novelData = {
-    ...currentNovel.value,
-    chapterList: chapters.value,
-    characters: characters.value,
-    worldSettings: novelStore.worldSettings,
-    corpusData: corpusData.value,
-    events: events.value,
-    updatedAt: new Date(),
-    wordCount: totalWordCount,
-    // 保持兼容性的字段
-    chapters: chapters.value.length,
-    totalWords: totalWordCount
-  }
-  
-  const novels = JSON.parse(localStorage.getItem('novels') || '[]')
-  const index = novels.findIndex(n => n.id === currentNovel.value.id)
-  if (index > -1) {
-    novels[index] = novelData
-  } else {
-    novels.push(novelData)
-  }
-  localStorage.setItem('novels', JSON.stringify(novels))
+  // Fire and forget async save
+  (async () => {
+    try {
+      const totalWordCount = chapters.value.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
+      
+      const novelData = {
+        ...currentNovel.value,
+        updatedAt: new Date(),
+        wordCount: totalWordCount,
+        // 保持兼容性的字段
+        chapters: chapters.value.length,
+        totalWords: totalWordCount
+      }
+      
+      // 保存小说基本信息到 IndexedDB
+      await db.saveNovel(novelData)
+      
+      // 保存章节数据
+      for (const chapter of chapters.value) {
+        await db.saveChapter({
+          ...chapter,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存角色数据
+      for (const character of characters.value) {
+        await db.saveCharacter({
+          ...character,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存世界观设定数据
+      for (const setting of novelStore.worldSettings) {
+        await db.saveWorldSetting({
+          ...setting,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存语料库数据
+      for (const corpus of corpusData.value) {
+        await db.saveCorpus({
+          ...corpus,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存事件数据
+      for (const event of events.value) {
+        await db.saveEvent({
+          ...event,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      console.log('💾 小说数据已保存到 IndexedDB')
+    } catch (error) {
+      console.error('❌ 保存小说数据失败:', error)
+      ElMessage.error('保存失败: ' + error.message)
+    }
+  })()
 }
 
-// 初始化
-const initNovel = () => {
+// 初始化（使用 IndexedDB）
+const initNovel = async () => {
   const novelId = parseInt(route.query.novelId)
   if (novelId) {
-    // 从localStorage加载小说数据
-    const novels = JSON.parse(localStorage.getItem('novels') || '[]')
-    const novel = novels.find(n => n.id === novelId)
-    
-    if (novel) {
-      currentNovel.value = novel
+    try {
+      console.log('📚 正在从 IndexedDB 加载小说数据...', novelId)
       
-      // 处理日期对象
-      if (novel.chapterList) {
-        chapters.value = novel.chapterList.map(chapter => {
-          // 修复旧数据中可能存在的'outline'状态
-          let fixedStatus = chapter.status || 'draft'
-          if (fixedStatus === 'outline') {
-            fixedStatus = 'draft'
-          }
-          
-          return {
-            ...chapter,
-            createdAt: new Date(chapter.createdAt),
-            updatedAt: new Date(chapter.updatedAt),
-            // 确保状态字段存在，兼容旧数据，并修复错误的'outline'状态
-            status: fixedStatus
-          }
-        })
+      // 从 IndexedDB 加载小说数据
+      const novel = await db.getNovel(novelId)
+      
+      if (novel) {
+        console.log('✅ 找到小说:', novel.title)
+        currentNovel.value = novel
         
-        // 如果存在章节，自动选择第一章节
-        if (chapters.value.length > 0) {
-          selectChapter(chapters.value[0])
+        // 加载章节数据
+        const chapterList = await db.getChaptersByNovel(novelId)
+        
+        if (chapterList && chapterList.length > 0) {
+          chapters.value = chapterList.map(chapter => {
+            // 修复旧数据中可能存在的'outline'状态
+            let fixedStatus = chapter.status || 'draft'
+            if (fixedStatus === 'outline') {
+              fixedStatus = 'draft'
+            }
+            
+            return {
+              ...chapter,
+              createdAt: new Date(chapter.createdAt),
+              updatedAt: new Date(chapter.updatedAt),
+              // 确保状态字段存在，兼容旧数据，并修复错误的'outline'状态
+              status: fixedStatus
+            }
+          })
+          
+          // 如果存在章节，自动选择第一章节
+          if (chapters.value.length > 0) {
+            selectChapter(chapters.value[0])
+          }
+        } else {
+          chapters.value = []
         }
         
-        // 保存修复后的数据
-        saveNovelData()
+        // 加载角色数据
+        const characterList = await db.getCharactersByNovel(novelId)
+        characters.value = characterList || []
+        
+        // 加载世界观设定数据
+        const worldSettingsList = await db.getWorldSettingsByNovel(novelId)
+        // 先清空store中的世界观设定
+        novelStore.worldSettings.splice(0, novelStore.worldSettings.length)
+        // 添加小说的世界观设定到store
+        if (worldSettingsList && worldSettingsList.length > 0) {
+          worldSettingsList.forEach(setting => {
+            novelStore.worldSettings.push(setting)
+          })
+        }
+        
+        // 加载语料库数据
+        const corpusList = await db.getCorpusByNovel(novelId)
+        corpusData.value = corpusList || []
+        
+        // 加载事件数据
+        const eventsList = await db.getEventsByNovel(novelId)
+        events.value = eventsList || []
+        
+        console.log('✅ 小说数据加载完成')
+      } else {
+        console.log('❌ 未找到小说:', novelId)
+        ElMessage.error('小说不存在')
+        router.push('/novels')
       }
-      
-      // 加载相关数据
-      characters.value = novel.characters || []
-      // 加载世界观设定到store中
-      // 先清空store中的世界观设定
-      novelStore.worldSettings.splice(0, novelStore.worldSettings.length)
-      // 添加小说的世界观设定到store
-      if (novel.worldSettings && novel.worldSettings.length > 0) {
-        novel.worldSettings.forEach(setting => {
-          novelStore.worldSettings.push(setting)
-        })
-      }
-      corpusData.value = novel.corpusData || []
-      events.value = novel.events || []
-    } else {
-      ElMessage.error('小说不存在')
+    } catch (error) {
+      console.error('❌ 加载小说数据失败:', error)
+      ElMessage.error('加载小说数据失败: ' + error.message)
       router.push('/novels')
     }
   } else {
@@ -7694,33 +7794,79 @@ const initNovel = () => {
   }
 }
 
-// 生命周期
-onMounted(() => {
-  initNovel()
+// 生命周期管理 - 修复内存泄漏
+const cleanupFunctions = []  // 存储所有需要清理的函数引用
+
+onMounted(async () => {
+  await initNovel()
   loadPrompts()
+  
+  // 初始化自动保存（保存定时器引用以便清理）
+  const autoSaveInterval = setInterval(() => {
+    if (currentChapter.value) {
+      saveCurrentChapter()
+    }
+  }, 30000) // 每30秒自动保存
+  
+  cleanupFunctions.push(() => clearInterval(autoSaveInterval))
 })
 
 onUnmounted(() => {
-  // 页面卸载时自动保存
+  console.log('🧹 开始清理 Writer 组件资源...')
+  
+  // 1. 清理定时器
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer)
   }
-  saveCurrentChapter()
   
-  if (editorRef.value) {
-    editorRef.value.destroy()
+  // 2. 保存当前章节
+  try {
+    saveCurrentChapter()
+  } catch (error) {
+    console.error('保存章节失败:', error)
   }
+  
+  // 3. 销毁编辑器实例
+  if (editorRef.value) {
+    try {
+      editorRef.value.destroy()
+      editorRef.value = null
+    } catch (error) {
+      console.error('销毁编辑器失败:', error)
+    }
+  }
+  
+  // 4. 执行所有清理函数
+  cleanupFunctions.forEach(cleanup => {
+    try {
+      cleanup()
+    } catch (error) {
+      console.error('清理函数执行失败:', error)
+    }
+  })
+  
+  // 5. 清空数据引用，帮助垃圾回收
+  chapters.value = []
+  characters.value = []
+  corpusData.value = []
+  events.value = []
+  prompts.value = []
+  
+  console.log('✅ Writer 组件资源清理完成')
 })
 
 // 监听路由参数变化
-watch(() => route.query.novelId, () => {
+const routeWatcher = watch(() => route.query.novelId, async () => {
   if (route.query.novelId) {
     // 重置当前章节
     currentChapter.value = null
     content.value = ''
-    initNovel()
+    await initNovel()
   }
 })
+
+// 将 watcher 清理函数添加到清理列表
+cleanupFunctions.push(() => routeWatcher())
 
 // 批量生成角色提示词相关函数
 const openBatchCharacterPromptSelector = () => {

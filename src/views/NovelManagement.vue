@@ -268,13 +268,16 @@
         <el-form-item label="标签">
           <el-input 
             v-model="tagInput"
-            placeholder="输入标签后按回车添加"
+            placeholder="输入标签，支持用逗号、分号、空格分隔批量添加"
             @keyup.enter="addTag"
           >
             <template #append>
               <el-button @click="addTag">添加</el-button>
             </template>
           </el-input>
+          <el-text type="info" size="small" style="margin-top: 4px; display: block;">
+            💡 提示：可以输入"都市,职场,现代"一次性添加多个标签
+          </el-text>
           <div class="tags-display" v-if="createForm.tags.length > 0">
             <el-tag 
               v-for="(tag, index) in createForm.tags"
@@ -510,13 +513,16 @@
         <el-form-item label="标签">
           <el-input 
             v-model="editTagInput"
-            placeholder="输入标签后按回车添加"
+            placeholder="输入标签，支持用逗号、分号、空格分隔批量添加"
             @keyup.enter="addEditTag"
           >
             <template #append>
               <el-button @click="addEditTag">添加</el-button>
             </template>
           </el-input>
+          <el-text type="info" size="small" style="margin-top: 4px; display: block;">
+            💡 提示：可以输入"都市,职场,现代"一次性添加多个标签
+          </el-text>
           <div class="tags-display" v-if="editForm.tags.length > 0">
             <el-tag 
               v-for="(tag, index) in editForm.tags"
@@ -548,6 +554,7 @@ import {
 } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import apiService from '@/services/api.js'
+import db from '@/services/simpleDB.js'
 
 const router = useRouter()
 
@@ -574,46 +581,45 @@ const isSavingEdit = ref(false)
 // 小说数据 - 从localStorage加载
 const novels = ref([])
 
-// 加载小说数据
-const loadNovels = () => {
+// 加载小说数据（使用 IndexedDB）
+const loadNovels = async () => {
   try {
-    const saved = localStorage.getItem('novels')
-    if (saved) {
-      const parsedNovels = JSON.parse(saved)
-      // 将日期字符串转换为Date对象
-      novels.value = parsedNovels.map(novel => ({
-        ...novel,
-        createdAt: new Date(novel.createdAt),
-        updatedAt: new Date(novel.updatedAt),
-        chapterList: (novel.chapterList || []).map(chapter => ({
-          ...chapter,
-          createdAt: chapter.createdAt ? new Date(chapter.createdAt) : new Date(),
-          updatedAt: chapter.updatedAt ? new Date(chapter.updatedAt) : new Date()
-        })),
-        writingRecords: (novel.writingRecords || []).map(record => ({
-          ...record,
-          date: new Date(record.date)
-        }))
-      }))
-    } else {
-      // 如果没有保存的数据，初始化为空
-      novels.value = []
-      // 保存空数据到localStorage
-      saveNovels()
+    console.log('📚 从 IndexedDB 加载小说数据...')
+    const novelsData = await db.getAllNovels()
+    
+    // 为每个小说加载完整的关联数据
+    for (const novel of novelsData) {
+      novel.chapterList = await db.getChaptersByNovel(novel.id)
+      novel.characters = await db.getCharactersByNovel(novel.id)
+      novel.worldSettings = await db.getWorldSettingsByNovel(novel.id)
+      novel.corpusData = await db.getCorpusByNovel(novel.id)
+      novel.events = await db.getEventsByNovel(novel.id)
+      
+      // 统计数据
+      novel.chapters = novel.chapterList?.length || 0
+      novel.wordCount = novel.chapterList?.reduce((sum, ch) => sum + (ch.wordCount || 0), 0) || 0
+      novel.totalWords = novel.wordCount
     }
+    
+    novels.value = novelsData
+    console.log(`✅ 成功加载 ${novelsData.length} 部小说`)
   } catch (error) {
-    console.error('加载小说数据失败:', error)
+    console.error('❌ 从 IndexedDB 加载小说失败:', error)
+    ElMessage.error('加载小说数据失败')
     novels.value = []
   }
 }
 
-// 保存小说数据到localStorage
-const saveNovels = () => {
+// 保存单个小说（使用 IndexedDB）
+const saveNovel = async (novelData) => {
   try {
-    localStorage.setItem('novels', JSON.stringify(novels.value))
+    const novelId = await db.saveNovel(novelData)
+    console.log('💾 小说保存成功:', novelId)
+    return novelId
   } catch (error) {
-    console.error('保存小说数据失败:', error)
-    ElMessage.error('保存数据失败')
+    console.error('❌ 保存小说失败:', error)
+    ElMessage.error('保存小说失败')
+    throw error
   }
 }
 
@@ -1108,22 +1114,42 @@ const deleteNovel = async (novel) => {
       type: 'warning'
     })
     
+    // 从 IndexedDB 删除
+    await db.deleteNovel(novel.id)
+    
+    // 从本地列表移除
     const index = novels.value.findIndex(n => n.id === novel.id)
     if (index > -1) {
       novels.value.splice(index, 1)
-      // 保存到localStorage
-      saveNovels()
       ElMessage.success('删除成功')
     }
   } catch (error) {
-    // 用户取消删除
+    if (error.message) {
+      ElMessage.error('删除失败: ' + error.message)
+    }
+    // 用户取消删除或其他错误
   }
 }
 
 const addTag = () => {
-  if (tagInput.value.trim() && !createForm.value.tags.includes(tagInput.value.trim())) {
-    createForm.value.tags.push(tagInput.value.trim())
+  const input = tagInput.value.trim()
+  if (!input) return
+  
+  // 支持多种分隔符：逗号、分号、空格、中文逗号、中文分号
+  const separators = /[,，;；\s]+/
+  const newTags = input.split(separators)
+    .map(tag => tag.trim())
+    .filter(tag => tag && !createForm.value.tags.includes(tag))
+  
+  if (newTags.length > 0) {
+    createForm.value.tags.push(...newTags)
     tagInput.value = ''
+    
+    if (newTags.length > 1) {
+      ElMessage.success(`已添加 ${newTags.length} 个标签：${newTags.join('、')}`)
+    }
+  } else {
+    ElMessage.warning('标签已存在或输入为空')
   }
 }
 
@@ -1204,34 +1230,40 @@ const createNovel = async () => {
   try {
     await createFormRef.value.validate()
     
+    // 确保所有数据都是可序列化的
     const newNovel = {
-      ...createForm.value,
-      id: Date.now(),
+      title: createForm.value.title || '',
+      genre: createForm.value.genre || '',
+      description: createForm.value.description || '',
+      cover: createForm.value.cover || '',
+      tags: Array.isArray(createForm.value.tags) ? [...createForm.value.tags] : [],
       status: 'writing',
       chapters: 0,
       wordCount: 0,
       totalWords: 0,
       avgWordsPerChapter: 0,
       writingDays: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
       chapterList: [],
       writingRecords: [],
-      genrePrompt: genrePresets[createForm.value.genre]?.prompt || '',
-      // 章节管理需要的数据结构
+      genrePrompt: genrePresets.value[createForm.value.genre]?.prompt || '',
+      // 确保关联数据都是简单数组
       characters: [],
       worldSettings: [],
       corpusData: [],
       events: []
     }
     
+    console.log('准备保存的小说数据:', newNovel)
+    
+    // 保存到 IndexedDB
+    const novelId = await saveNovel(newNovel)
+    newNovel.id = novelId
+    
+    // 添加到本地列表
     novels.value.unshift(newNovel)
     
     // 更新类型使用计数
     updateGenreUsageCount(createForm.value.genre)
-    
-    // 保存到localStorage
-    saveNovels()
     
     ElMessage.success('小说创建成功！即将跳转到编辑区...')
     showCreateDialog.value = false
@@ -1239,11 +1271,11 @@ const createNovel = async () => {
     
     // 创建成功后跳转到编辑页面
     setTimeout(() => {
-      router.push(`/writer?novelId=${newNovel.id}`)
+      router.push(`/writer?novelId=${novelId}`)
     }, 1000)
   } catch (error) {
     console.error('创建小说失败:', error)
-    ElMessage.error('创建小说失败')
+    ElMessage.error('创建小说失败: ' + error.message)
   }
 }
 
@@ -1301,10 +1333,24 @@ const onEditGenreChange = (genre) => {
 
 // 添加编辑标签
 const addEditTag = () => {
-  const tag = editTagInput.value.trim()
-  if (tag && !editForm.value.tags.includes(tag)) {
-    editForm.value.tags.push(tag)
+  const input = editTagInput.value.trim()
+  if (!input) return
+  
+  // 支持多种分隔符：逗号、分号、空格、中文逗号、中文分号
+  const separators = /[,，;；\s]+/
+  const newTags = input.split(separators)
+    .map(tag => tag.trim())
+    .filter(tag => tag && !editForm.value.tags.includes(tag))
+  
+  if (newTags.length > 0) {
+    editForm.value.tags.push(...newTags)
     editTagInput.value = ''
+    
+    if (newTags.length > 1) {
+      ElMessage.success(`已添加 ${newTags.length} 个标签：${newTags.join('、')}`)
+    }
+  } else {
+    ElMessage.warning('标签已存在或输入为空')
   }
 }
 
@@ -1599,11 +1645,17 @@ const generateDescriptionFromTemplate = () => {
 }
 
 // 生命周期
-onMounted(() => {
-  // 加载小说数据
-  loadNovels()
-  // 加载类型数据
-  loadGenres()
+onMounted(async () => {
+  try {
+    // 加载类型数据
+    loadGenres()
+    
+    // 异步加载小说数据
+    await loadNovels()
+  } catch (error) {
+    console.error('初始化失败:', error)
+    ElMessage.error('应用初始化失败')
+  }
 })
 </script>
 

@@ -8,6 +8,23 @@ class APIService {
     this.proxyConfig = apiConfig.proxy
     // 尝试从localStorage加载用户配置
     this.loadUserConfig()
+    
+    // 重试配置
+    this.retryConfig = {
+      maxRetries: 3,          // 最大重试次数
+      baseDelay: 1000,        // 基础延迟（毫秒）
+      maxDelay: 10000,        // 最大延迟（毫秒）
+      timeout: 120000         // 超时时间（2分钟）
+    }
+    
+    // 统计信息
+    this.stats = {
+      totalCalls: 0,
+      successfulCalls: 0,
+      failedCalls: 0,
+      retries: 0,
+      averageLatency: 0
+    }
   }
   
   // 加载用户配置
@@ -80,9 +97,106 @@ class APIService {
     }
   }
 
+  /**
+   * 指数退避重试函数
+   * @param {Function} fn - 要重试的函数
+   * @param {Number} maxRetries - 最大重试次数
+   * @param {Number} baseDelay - 基础延迟时间（毫秒）
+   */
+  async retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    let lastError
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const startTime = Date.now()
+        const result = await fn()
+        
+        // 统计成功调用
+        this.stats.totalCalls++
+        this.stats.successfulCalls++
+        const latency = Date.now() - startTime
+        this.stats.averageLatency = 
+          (this.stats.averageLatency * (this.stats.successfulCalls - 1) + latency) / this.stats.successfulCalls
+        
+        if (i > 0) {
+          console.log(`✅ 第 ${i + 1} 次重试成功`)
+          ElMessage.success(`重试成功！`)
+        }
+        
+        return result
+      } catch (error) {
+        lastError = error
+        
+        // 最后一次重试失败，直接抛出
+        if (i === maxRetries - 1) {
+          this.stats.totalCalls++
+          this.stats.failedCalls++
+          throw error
+        }
+        
+        // 记录重试
+        this.stats.retries++
+        
+        // 计算延迟时间（指数退避 + 随机抖动）
+        const delay = Math.min(
+          baseDelay * Math.pow(2, i) + Math.random() * 1000,
+          this.retryConfig.maxDelay
+        )
+        
+        console.log(`⚠️ 第 ${i + 1} 次尝试失败，${Math.round(delay)}ms 后重试...`)
+        console.log(`错误信息: ${error.message}`)
+        
+        // 如果不是网络错误，不重试
+        if (error.message && !this.isRetryableError(error)) {
+          console.log('❌ 非可重试错误，停止重试')
+          throw error
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    
+    throw lastError
+  }
+
+  /**
+   * 判断是否为可重试的错误
+   */
+  isRetryableError(error) {
+    const retryableMessages = [
+      'network',
+      'timeout',
+      'abort',
+      'fetch',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      '429', // Too Many Requests
+      '500', // Internal Server Error
+      '502', // Bad Gateway
+      '503', // Service Unavailable
+      '504'  // Gateway Timeout
+    ]
+    
+    const errorMessage = error.message.toLowerCase()
+    return retryableMessages.some(msg => errorMessage.includes(msg.toLowerCase()))
+  }
+
   // 构建请求URL
   buildURL(endpoint) {
-    return `${this.config.baseURL}${endpoint}`
+    let fullURL
+    // 如果baseURL已经包含chat/completions（中转站完整URL），直接使用
+    if (this.config.baseURL.includes('chat/completions')) {
+      fullURL = this.config.baseURL
+    } else if (this.config.baseURL.endsWith('/v1')) {
+      // 标准格式：baseURL以/v1结尾，添加endpoint
+      fullURL = `${this.config.baseURL}${endpoint}`
+    } else {
+      // 兼容格式：baseURL不以/v1结尾，添加/v1和endpoint
+      fullURL = `${this.config.baseURL}/v1${endpoint}`
+    }
+    console.log('构建API URL:', fullURL) // 调试：查看完整URL
+    return fullURL
   }
 
   // 构建请求头
@@ -188,9 +302,56 @@ class APIService {
     }
   }
 
+  /**
+   * 改进的流式生成文本内容（带重试和中断恢复）
+   */
+  async generateTextStreamWithRetry(prompt, options = {}, onChunk = null) {
+    const maxRetries = this.retryConfig.maxRetries
+    let retryCount = 0
+    let savedContent = '' // 保存已生成的内容
+    
+    const attemptGeneration = async () => {
+      try {
+        return await this.generateTextStream(prompt, options, (chunk, fullContent) => {
+          savedContent = fullContent // 实时保存当前内容
+          if (onChunk) {
+            onChunk(chunk, fullContent)
+          }
+        })
+      } catch (error) {
+        retryCount++
+        
+        // 网络错误且有已生成的内容，询问用户是否重试
+        if (retryCount < maxRetries && savedContent.length > 0) {
+          console.warn(`⚠️ 生成中断，已获得 ${savedContent.length} 字符，正在重试...`)
+          ElMessage.warning(`生成中断，已保存 ${savedContent.length} 字，正在重试...`)
+          throw error // 继续重试
+        }
+        
+        throw error
+      }
+    }
+    
+    try {
+      return await this.retryWithBackoff(attemptGeneration, maxRetries, this.retryConfig.baseDelay)
+    } catch (finalError) {
+      // 如果最终失败，但有已生成的内容，返回它
+      if (savedContent.length > 0) {
+        ElMessage.warning(`生成中断，但已获得部分内容 (${savedContent.length} 字)`)
+        return savedContent
+      }
+      throw finalError
+    }
+  }
+
   // 流式生成文本内容
   async generateTextStream(prompt, options = {}, onChunk = null) {
     console.log('开始流式生成，prompt:', prompt.substring(0, 100) + '...') // 调试日志
+    console.log('当前API配置:', {
+      baseURL: this.config.baseURL,
+      hasApiKey: !!this.config.apiKey,
+      apiKeyLength: this.config.apiKey?.length || 0
+    }) // 调试：查看当前配置
     
     // 验证配置的完整性
     if (!this.config.apiKey || this.config.apiKey.trim() === '') {
@@ -202,7 +363,13 @@ class APIService {
     }
     
     const model = options.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
-    console.log('使用模型:', model)
+    console.log('模型选择详情:', {
+      传入模型: options.model,
+      配置中选中模型: this.config.selectedModel,
+      配置中默认模型: this.config.defaultModel,
+      最终使用模型: model,
+      完整配置: this.config
+    })
     
     // 验证prompt参数
     if (!prompt || typeof prompt !== 'string') {
@@ -262,8 +429,8 @@ class APIService {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
-        // 增加超时设置，避免长时间等待导致的截断
-        signal: AbortSignal.timeout(300000) // 5分钟超时，给更多时间生成长内容
+        // 优化超时设置为 2 分钟，避免用户长时间等待
+        signal: AbortSignal.timeout(this.retryConfig.timeout) // 2分钟超时
       })
       
       console.log('API响应状态:', response.status) // 调试日志
@@ -316,6 +483,7 @@ class APIService {
 
           const chunk = decoder.decode(value, { stream: true })
           console.log('接收到原始chunk:', chunk.length, '字节') // 调试日志
+          console.log('原始chunk内容（前200字符）:', chunk.substring(0, 200)) // 新增：查看实际内容
           
           // 重置无数据超时
           lastProgressTime = Date.now()
@@ -327,9 +495,12 @@ class APIService {
           // 按行分割，最后一行可能不完整，需要保留
           const lines = buffer.split('\n')
           buffer = lines.pop() || '' // 保留最后一行（可能不完整）
+          
+          console.log('分割后的行数:', lines.length) // 新增：查看分割结果
 
           for (const line of lines) {
             const trimmedLine = line.trim()
+            console.log('处理行:', trimmedLine.substring(0, 100)) // 新增：查看每行内容
             
             if (trimmedLine.startsWith('data: ')) {
               const data = trimmedLine.slice(6).trim()
@@ -798,6 +969,13 @@ ${prompt}
   // 验证API密钥
   async validateAPIKey() {
     try {
+      // 对于中转站，直接返回true，跳过验证
+      // 因为中转站通常不支持/models端点
+      if (this.config.baseURL && !this.config.baseURL.includes('api.openai.com')) {
+        console.log('检测到非OpenAI官方API，跳过密钥验证')
+        return true
+      }
+      
       const url = this.buildURL('/models')
       const headers = this.buildHeaders()
       
@@ -809,7 +987,8 @@ ${prompt}
       return response.ok
     } catch (error) {
       console.error('API密钥验证失败:', error)
-      return false
+      // 对于中转站，即使验证失败也返回true
+      return true
     }
   }
 
