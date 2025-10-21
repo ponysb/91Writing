@@ -233,7 +233,9 @@ class APIService {
     }
   }
 
-  // 生成文本内容
+  /**
+   * 生成文本内容（带重试和友好错误提示）
+   */
   async generateText(prompt, options = {}) {
     const model = options.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
     
@@ -253,53 +255,110 @@ class APIService {
       stream: false
     }
 
-    try {
-      const response = await this.makeRequest('/chat/completions', {
-        body: JSON.stringify(requestBody)
-      })
-
-      const content = response.choices[0]?.message?.content || ''
-      const usage = response.usage
-      
-      // 记录实际的token使用情况
-      if (usage) {
-        billingService.recordAPICall({
-          type: options.type || 'generation',
-          model: model,
-          content: prompt,
-          response: content,
-          inputTokens: usage.prompt_tokens || 0,
-          outputTokens: usage.completion_tokens || 0,
-          status: 'success'
+    const executeRequest = async () => {
+      try {
+        const response = await this.makeRequest('/chat/completions', {
+          body: JSON.stringify(requestBody)
         })
-      } else {
-        // 如果API没有返回usage信息，使用估算值
-        const outputTokens = billingService.estimateTokens(content)
+
+        const content = response.choices[0]?.message?.content || ''
+        const usage = response.usage
+        
+        // 记录实际的token使用情况
+        if (usage) {
+          billingService.recordAPICall({
+            type: options.type || 'generation',
+            model: model,
+            content: prompt,
+            response: content,
+            inputTokens: usage.prompt_tokens || 0,
+            outputTokens: usage.completion_tokens || 0,
+            status: 'success'
+          })
+        } else {
+          // 如果API没有返回usage信息，使用估算值
+          const outputTokens = billingService.estimateTokens(content)
+          billingService.recordAPICall({
+            type: options.type || 'generation',
+            model: model,
+            content: prompt,
+            response: content,
+            inputTokens: estimatedInputTokens,
+            outputTokens: outputTokens,
+            status: 'success'
+          })
+        }
+
+        return content
+      } catch (error) {
+        // 记录失败的API调用
         billingService.recordAPICall({
           type: options.type || 'generation',
           model: model,
           content: prompt,
-          response: content,
+          response: '',
           inputTokens: estimatedInputTokens,
-          outputTokens: outputTokens,
-          status: 'success'
+          outputTokens: 0,
+          status: 'failed'
         })
+        
+        // 友好的错误提示
+        const friendlyError = this.getFriendlyErrorMessage(error)
+        throw new Error(friendlyError)
       }
+    }
 
-      return content
+    // 使用重试机制
+    try {
+      return await this.retryWithBackoff(
+        executeRequest,
+        this.retryConfig.maxRetries,
+        this.retryConfig.baseDelay
+      )
     } catch (error) {
-      // 记录失败的API调用
-      billingService.recordAPICall({
-        type: options.type || 'generation',
-        model: model,
-        content: prompt,
-        response: '',
-        inputTokens: estimatedInputTokens,
-        outputTokens: 0,
-        status: 'failed'
-      })
+      console.error('生成文本失败（已重试）:', error)
       throw error
     }
+  }
+
+  /**
+   * 将技术性错误转换为用户友好的错误消息
+   */
+  getFriendlyErrorMessage(error) {
+    const errorMessage = error.message || error.toString()
+    
+    // API 密钥相关错误
+    if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('Invalid API')) {
+      return 'API 密钥无效，请检查配置'
+    }
+    
+    // 配额/余额不足
+    if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+      return 'API 调用次数已达上限，请稍后重试或充值'
+    }
+    
+    // 网络连接问题
+    if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('timeout')) {
+      return '网络连接失败，请检查网络后重试'
+    }
+    
+    // 服务器错误
+    if (errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503')) {
+      return 'AI 服务暂时不可用，请稍后重试'
+    }
+    
+    // 内容过滤
+    if (errorMessage.includes('content_filter') || errorMessage.includes('policy')) {
+      return '内容不符合使用规范，请修改后重试'
+    }
+    
+    // Token 超限
+    if (errorMessage.includes('context_length') || errorMessage.includes('max_tokens')) {
+      return '输入内容过长，请缩短后重试'
+    }
+    
+    // 默认错误
+    return '生成失败，请重试或检查 API 配置'
   }
 
   /**
@@ -992,7 +1051,25 @@ ${prompt}
     }
   }
 
-  // AI生成人物
+  /**
+   * 获取默认角色数据（当AI生成失败时使用）
+   */
+  getDefaultCharacter() {
+    return {
+      name: '未命名角色',
+      age: '未知',
+      occupation: '待设定',
+      appearance: '待补充外貌描述',
+      personality: '待补充性格特点',
+      background: '待补充背景故事',
+      skills: [],
+      traits: ['待补充']
+    }
+  }
+
+  /**
+   * AI生成人物（带重试和错误处理）
+   */
   async generateCharacter(theme, characterType = '') {
     const typeInfo = characterType ? `角色类型：${characterType}` : ''
     const prompt = `请根据主题"${theme}"生成一个小说人物，${typeInfo}
@@ -1018,15 +1095,73 @@ ${prompt}
 }`
 
     try {
-      const response = await this.generateTextStream(prompt, {}, null)
-      return JSON.parse(response)
+      // 使用带重试的生成方法
+      const response = await this.retryWithBackoff(
+        async () => await this.generateTextStream(prompt, { type: 'character' }, null),
+        this.retryConfig.maxRetries,
+        this.retryConfig.baseDelay
+      )
+      
+      // 尝试解析 JSON
+      let parsed
+      try {
+        // 首先尝试直接解析
+        parsed = JSON.parse(response)
+      } catch (parseError) {
+        console.warn('JSON 直接解析失败，尝试提取 JSON 块...')
+        
+        // 尝试从响应中提取 JSON 块
+        const jsonMatch = response.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0])
+          } catch (e) {
+            throw new Error('AI 返回的内容格式不正确')
+          }
+        } else {
+          throw new Error('AI 返回的内容不包含有效的 JSON')
+        }
+      }
+      
+      // 验证必需字段
+      const requiredFields = ['name', 'personality']
+      const missingFields = requiredFields.filter(field => !parsed[field])
+      
+      if (missingFields.length > 0) {
+        console.warn('AI 响应缺少必要字段:', missingFields)
+        ElMessage.warning(`生成的角色信息不完整，请手动补充`)
+        // 返回部分数据 + 默认值
+        return { ...this.getDefaultCharacter(), ...parsed }
+      }
+      
+      return parsed
     } catch (error) {
-      console.error('生成人物失败:', error)
-      throw error
+      console.error('生成角色失败:', error)
+      ElMessage.error('生成角色失败，已填充默认值，请手动编辑')
+      
+      // 返回默认对象而非抛出错误，保证用户体验
+      return this.getDefaultCharacter()
     }
   }
 
-  // AI生成世界观设定
+  /**
+   * 获取默认世界观设定（当AI生成失败时使用）
+   */
+  getDefaultWorldSetting() {
+    return {
+      title: '未命名世界观',
+      overview: '待补充概述',
+      description: '待补充详细描述',
+      rules: ['待补充规则'],
+      geography: '待补充地理环境',
+      history: '待补充历史背景',
+      features: ['待补充特色']
+    }
+  }
+
+  /**
+   * AI生成世界观设定（带重试和错误处理）
+   */
   async generateWorldSetting(theme, settingType = '') {
     const typeInfo = settingType ? `设定类型：${settingType}` : ''
     const prompt = `请根据主题"${theme}"生成一个小说世界观设定，${typeInfo}
@@ -1051,11 +1186,50 @@ ${prompt}
 }`
 
     try {
-      const response = await this.generateTextStream(prompt, {}, null)
-      return JSON.parse(response)
+      // 使用带重试的生成方法
+      const response = await this.retryWithBackoff(
+        async () => await this.generateTextStream(prompt, { type: 'worldSetting' }, null),
+        this.retryConfig.maxRetries,
+        this.retryConfig.baseDelay
+      )
+      
+      // 尝试解析 JSON
+      let parsed
+      try {
+        parsed = JSON.parse(response)
+      } catch (parseError) {
+        console.warn('JSON 直接解析失败，尝试提取 JSON 块...')
+        
+        // 尝试从响应中提取 JSON 块
+        const jsonMatch = response.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0])
+          } catch (e) {
+            throw new Error('AI 返回的内容格式不正确')
+          }
+        } else {
+          throw new Error('AI 返回的内容不包含有效的 JSON')
+        }
+      }
+      
+      // 验证必需字段
+      const requiredFields = ['title', 'description']
+      const missingFields = requiredFields.filter(field => !parsed[field])
+      
+      if (missingFields.length > 0) {
+        console.warn('AI 响应缺少必要字段:', missingFields)
+        ElMessage.warning(`生成的世界观信息不完整，请手动补充`)
+        return { ...this.getDefaultWorldSetting(), ...parsed }
+      }
+      
+      return parsed
     } catch (error) {
       console.error('生成世界观设定失败:', error)
-      throw error
+      ElMessage.error('生成世界观失败，已填充默认值，请手动编辑')
+      
+      // 返回默认对象而非抛出错误
+      return this.getDefaultWorldSetting()
     }
   }
 

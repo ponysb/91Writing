@@ -129,13 +129,20 @@
             </el-button>
             <el-button 
               size="small" 
+              @click="manageChapters(novel)"
+            >
+              <el-icon><Memo /></el-icon>
+              章节管理
+            </el-button>
+            <el-button 
+              size="small" 
               @click="viewNovelDetails(novel)"
             >
               <el-icon><View /></el-icon>
               详情
             </el-button>
             <el-dropdown trigger="click">
-              <el-button size="small" type="text">
+              <el-button size="small" link>
                 <el-icon><MoreFilled /></el-icon>
               </el-button>
               <template #dropdown>
@@ -852,6 +859,11 @@ const handleImageLoad = (e) => {
 const openNovel = (novel) => {
   // 跳转到AI写作页面
   router.push(`/writer?novelId=${novel.id}`)
+}
+
+const manageChapters = (novel) => {
+  // 跳转到章节管理页面，并传递 novelId
+  router.push(`/chapters?novelId=${novel.id}`)
 }
 
 const viewNovelDetails = (novel) => {

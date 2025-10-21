@@ -64,10 +64,10 @@
               <h3>{{ prompt.title }}</h3>
             </div>
             <div class="prompt-actions">
-              <el-dropdown trigger="click">
-                <el-button type="text" size="small">
-                  <el-icon><MoreFilled /></el-icon>
-                </el-button>
+            <el-dropdown trigger="click">
+              <el-button link size="small">
+                <el-icon><MoreFilled /></el-icon>
+              </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
 

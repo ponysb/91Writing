@@ -79,10 +79,10 @@
                   </el-tooltip>
                 </div>
                 <div class="chapter-actions">
-                  <el-dropdown @command="(cmd) => handleChapterAction(cmd, chapter)">
-                    <el-button size="small" type="text">
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                <el-dropdown @command="(cmd) => handleChapterAction(cmd, chapter)">
+                  <el-button size="small" link>
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="edit">编辑信息</el-dropdown-item>
@@ -156,10 +156,10 @@
                   </div>
                 </div>
                 <div class="character-actions">
-                  <el-dropdown @command="(cmd) => handleCharacterAction(cmd, character)" trigger="click">
-                    <el-button size="small" type="text" @click.stop>
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                <el-dropdown @command="(cmd) => handleCharacterAction(cmd, character)" trigger="click">
+                  <el-button size="small" link @click.stop>
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="edit">
@@ -228,10 +228,10 @@
                   </div>
                 </div>
                 <div class="worldview-actions">
-                  <el-dropdown @command="(cmd) => handleWorldSettingAction(cmd, setting)" trigger="click">
-                    <el-button size="small" type="text" @click.stop>
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                <el-dropdown @command="(cmd) => handleWorldSettingAction(cmd, setting)" trigger="click">
+                  <el-button size="small" link @click.stop>
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="edit">
@@ -327,7 +327,7 @@
                     <h4>{{ event.title }}</h4>
                     <div class="event-actions">
                       <el-dropdown @command="(cmd) => handleEventAction(cmd, event)" trigger="click">
-                        <el-button size="small" type="text" @click.stop>
+                        <el-button size="small" link @click.stop>
                           <el-icon><MoreFilled /></el-icon>
                         </el-button>
                         <template #dropdown>
@@ -1925,11 +1925,11 @@
               <!-- 流式输出区域 -->
               <div v-if="isOptimizeStreaming" class="streaming-area">
                 <div class="streaming-header">
-                  <span class="streaming-status">🤖 AI正在润色中...</span>
-                  <el-button size="small" type="text" @click="stopOptimizeStreaming">
-                    <el-icon><Close /></el-icon>
-                    停止
-                  </el-button>
+                <span class="streaming-status">🤖 AI正在润色中...</span>
+                <el-button size="small" link @click="stopOptimizeStreaming">
+                  <el-icon><Close /></el-icon>
+                  停止
+                </el-button>
                 </div>
                 <div class="streaming-content-box">
                   <div class="streaming-text">{{ optimizeStreamingContent }}</div>
@@ -2073,11 +2073,11 @@
               <!-- 流式输出区域 -->
               <div v-if="isContinueStreaming" class="streaming-area">
                 <div class="streaming-header">
-                  <span class="streaming-status">🤖 AI正在续写中...</span>
-                  <el-button size="small" type="text" @click="stopContinueStreaming">
-                    <el-icon><Close /></el-icon>
-                    停止
-                  </el-button>
+                <span class="streaming-status">🤖 AI正在续写中...</span>
+                <el-button size="small" link @click="stopContinueStreaming">
+                  <el-icon><Close /></el-icon>
+                  停止
+                </el-button>
                 </div>
                 <div class="streaming-content-box">
                   <div class="streaming-text">{{ continueStreamingContent }}</div>
@@ -2451,10 +2451,33 @@ const contentWordCount = computed(() => {
 })
 
 // 方法
-const goBack = () => {
-  // 自动保存当前章节
-  saveCurrentChapter()
-  router.push('/novels')
+const goBack = async () => {
+  try {
+    console.log('🔙 准备返回小说列表...')
+    
+    // 保存当前章节并等待完成
+    if (currentChapter.value && content.value !== undefined) {
+      saveCurrentChapter()
+      
+      // 等待一小段时间确保保存完成
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      console.log('💾 章节数据保存完成')
+    }
+    
+    // 跳转回小说列表
+    console.log('🎯 跳转到小说列表页面')
+    router.push('/novels')
+    
+  } catch (error) {
+    console.error('❌ 返回过程中发生错误:', error)
+    ElMessage.warning('保存数据时出现问题，但仍将返回列表')
+    
+    // 即使保存失败也要跳转，避免用户被困在页面
+    setTimeout(() => {
+      router.push('/novels')
+    }, 1000)
+  }
 }
 
 const selectChapter = (chapter) => {
@@ -2473,11 +2496,24 @@ const loadChapter = (chapter) => {
 }
 
 const saveCurrentChapter = () => {
-  if (currentChapter.value) {
-    currentChapter.value.content = content.value
-    currentChapter.value.wordCount = contentWordCount.value
-    currentChapter.value.updatedAt = new Date()
-    saveNovelData()
+  try {
+    if (currentChapter.value) {
+      console.log('💾 保存当前章节:', currentChapter.value.title)
+      
+      currentChapter.value.content = content.value
+      currentChapter.value.wordCount = contentWordCount.value
+      currentChapter.value.updatedAt = new Date()
+      
+      // 调用保存方法
+      saveNovelData()
+      
+      console.log('✅ 章节数据已更新')
+    } else {
+      console.log('⚠️ 没有当前章节需要保存')
+    }
+  } catch (error) {
+    console.error('❌ 保存章节时出错:', error)
+    // 不抛出错误，避免阻断其他操作
   }
 }
 
@@ -7850,7 +7886,7 @@ onUnmounted(() => {
   characters.value = []
   corpusData.value = []
   events.value = []
-  prompts.value = []
+  availablePrompts.value = []
   
   console.log('✅ Writer 组件资源清理完成')
 })
