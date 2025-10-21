@@ -317,6 +317,10 @@
                     <el-icon><Plus /></el-icon>
                     手动创建
                   </el-button>
+                  <el-button size="small" @click="showGlobalAIConfig = true">
+                    <el-icon><Setting /></el-icon>
+                    AI配置
+                  </el-button>
                   <el-button size="small" type="primary" @click="openAIGenerateDialog">
                     <el-icon><MagicStick /></el-icon>
                     AI生成事件
@@ -766,6 +770,7 @@
               <el-radio label="backward">回溯补充</el-radio>
             </el-radio-group>
           </el-form-item>
+          
           
           <!-- 自定义提示 -->
           <el-form-item label="特殊要求">
@@ -2335,6 +2340,9 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 全局AI配置对话框 -->
+    <GlobalAIConfig v-model="showGlobalAIConfig" />
   </div>
 </template>
 
@@ -2352,6 +2360,8 @@ import billingService from '../services/billing.js'
 import storageService from '../services/storage.js'
 import db from '../services/simpleDB.js'
 import { useNovelStore } from '../stores/novel.js'
+import { globalAIConfig, enhanceUserPrompt } from '../services/aiConfig.js'
+import GlobalAIConfig from '../components/GlobalAIConfig.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -2662,6 +2672,7 @@ const aiGenerateForm = ref({
 
 const aiGeneratedEvents = ref([])
 const isGenerating = ref(false)
+const showGlobalAIConfig = ref(false)
 
 // 编辑器配置
 const toolbarConfig = {}
@@ -7881,7 +7892,8 @@ const buildSimpleEventPrompt = () => {
   const { count, eventTypes } = aiGenerateForm.value
   const novelInfo = getNovelContextInfo()
   
-  let prompt = `请为小说《${novelInfo.title}》生成${count}个故事情节事件。\n\n`
+  let prompt = `请为小说《${novelInfo.title}》生成${count}个事件。\n\n`
+  
   prompt += `小说类型：${novelInfo.genre}\n`
   prompt += `主要角色：${novelInfo.mainCharacters.join('、')}\n\n`
   
@@ -7919,7 +7931,7 @@ const buildEventGenerationPrompt = () => {
   const { mode, count, eventTypes, customPrompt, chapterConstraints } = aiGenerateForm.value
   const novelInfo = getNovelContextInfo()
   
-  let basePrompt = `请为小说《${novelInfo.title}》生成${count}个故事情节事件，要求内容健康积极：\n\n`
+  let basePrompt = `请为小说《${novelInfo.title}》生成${count}个精彩的事件：\n\n`
   
   // 根据模式添加特定要求
   switch (mode) {
@@ -7932,8 +7944,8 @@ const buildEventGenerationPrompt = () => {
       basePrompt += `事件要与该章节内容紧密相关\n`
       break
     case 'conflict':
-      basePrompt += `重点生成推动剧情发展的情节转折\n`
-      basePrompt += `要有戏剧性和可读性\n`
+      basePrompt += `重点生成推动剧情发展的激烈冲突和转折\n`
+      basePrompt += `要有强烈的戏剧张力和紧张感\n`
       break
     case 'character':
       basePrompt += `围绕主要角色生成发展事件\n`
@@ -8022,7 +8034,7 @@ const buildEventGenerationPrompt = () => {
   }
   
   // 输出格式要求
-  basePrompt += `\n请严格按照以下JSON格式返回，内容要健康积极：\n`
+  basePrompt += `\n请严格按照以下JSON格式返回，内容要生动精彩：\n`
   basePrompt += `[{\n`
   basePrompt += `  "title": "事件标题",\n`
   basePrompt += `  "description": "详细描述",\n`

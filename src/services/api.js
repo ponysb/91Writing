@@ -1,6 +1,7 @@
 import apiConfig from '../config/api.json'
 import billingService from './billing.js'
 import { ElMessage } from 'element-plus'
+import { enhanceUserPrompt, getAICallParams } from './aiConfig.js'
 
 class APIService {
   constructor() {
@@ -421,9 +422,14 @@ class APIService {
       throw new Error('API地址未配置，请先在设置中配置API地址')
     }
     
-    const model = options.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
+    // 应用全局AI配置
+    const aiParams = getAICallParams()
+    const enhancedPrompt = enhanceUserPrompt(prompt)
+    
+    const model = options.model || aiParams.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
     console.log('模型选择详情:', {
       传入模型: options.model,
+      全局配置模型: aiParams.model,
       配置中选中模型: this.config.selectedModel,
       配置中默认模型: this.config.defaultModel,
       最终使用模型: model,
@@ -431,20 +437,20 @@ class APIService {
     })
     
     // 验证prompt参数
-    if (!prompt || typeof prompt !== 'string') {
+    if (!enhancedPrompt || typeof enhancedPrompt !== 'string') {
       throw new Error('无效的prompt参数')
     }
     
     // 清理prompt内容，确保JSON序列化安全
-    let cleanPrompt = prompt
+    let cleanPrompt = enhancedPrompt
     try {
       // 移除控制字符和不可见字符
-      cleanPrompt = prompt.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+      cleanPrompt = enhancedPrompt.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
       
       // 确保可以正常JSON序列化
       JSON.stringify({ content: cleanPrompt })
       
-      console.log('Prompt清理完成，原长度:', prompt.length, '清理后长度:', cleanPrompt.length)
+      console.log('Prompt清理完成，原长度:', enhancedPrompt.length, '清理后长度:', cleanPrompt.length)
     } catch (cleanError) {
       console.error('Prompt清理失败:', cleanError)
       throw new Error('提示词包含无法处理的字符，请检查输入内容')
@@ -453,7 +459,7 @@ class APIService {
     // 估算输入token数量（用于记录，无需检查余额）
     const estimatedInputTokens = billingService.estimateTokens(cleanPrompt)
     
-    // 移除maxTokens限制，允许无限制生成
+    // 使用全局配置的maxTokens
     const maxTokens = options.maxTokens || this.config.maxTokens || null
     
     console.log('maxTokens配置检查:', {
@@ -462,16 +468,28 @@ class APIService {
       '最终使用的maxTokens': maxTokens
     })
     
+    // 构建消息数组
+    const messages = []
+    
+    // 添加系统提示词（如果存在）
+    if (aiParams.system_prompt) {
+      messages.push({
+        role: 'system',
+        content: aiParams.system_prompt
+      })
+    }
+    
+    // 添加用户消息
+    messages.push({
+      role: 'user',
+      content: cleanPrompt
+    })
+
     const requestBody = {
       model: model,
-      messages: [
-        {
-          role: 'user',
-          content: cleanPrompt
-        }
-      ],
-      max_tokens: maxTokens || undefined, // 如果为null则不设置限制
-      temperature: options.temperature || this.config.temperature,
+      messages: messages,
+      max_tokens: maxTokens || aiParams.max_tokens || undefined, // 如果为null则不设置限制
+      temperature: options.temperature || aiParams.temperature || this.config.temperature,
       stream: true
     }
 
