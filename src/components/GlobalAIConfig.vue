@@ -121,7 +121,7 @@
     <template #footer>
       <div class="dialog-footer">
         <el-button @click="resetConfig">重置</el-button>
-        <el-button @click="exportConfig">导出配置</el-button>
+        <el-button @click="handleExportConfig">导出配置</el-button>
         <el-button @click="importConfig">导入配置</el-button>
         <el-button type="primary" @click="saveConfig">保存配置</el-button>
       </div>
@@ -208,7 +208,7 @@ const resetConfig = () => {
 }
 
 // 导出配置
-const exportConfig = () => {
+const handleExportConfig = () => {
   const configData = exportConfig()
   const dataStr = JSON.stringify(configData, null, 2)
   const dataBlob = new Blob([dataStr], { type: 'application/json' })
