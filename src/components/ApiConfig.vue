@@ -90,6 +90,26 @@
                   <li>支持本地部署大模型，如ollama、llmstudio等，自行学习怎么获取openai格式api</li>
                 </ul>
               </div>
+              
+              <div class="supported-models">
+                <h5>新增支持模型：</h5>
+                <div class="model-group">
+                  <h6>通义千问（阿里云）：</h6>
+                  <p>qwen-max、qwen-plus、qwen-turbo、qwen2.5系列等</p>
+                  <p class="api-tip">默认API地址：https://dashscope.aliyuncs.com/compatible-mode/v1</p>
+                </div>
+                <div class="model-group">
+                  <h6>豆包（火山引擎）：</h6>
+                  <p>doubao-seed-1.8、doubao-pro系列、doubao-lite系列等</p>
+                  <p class="api-tip">默认API地址：https://ark.cn-beijing.volces.com/api/v3</p>
+                </div>
+                <div class="model-group">
+                  <h6>Kimi（Moonshot）：</h6>
+                  <p>moonshot-v1-8k、moonshot-v1-32k、moonshot-v1-128k等</p>
+                  <p class="api-tip">默认API地址：https://api.moonshot.cn/v1</p>
+                </div>
+                <p class="model-note">💡 选择以上模型时，系统会自动填充对应的API地址模板</p>
+              </div>
 
               <div class="usage-steps">
                  <h5>使用教程：</h5>
@@ -317,7 +337,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useNovelStore } from '../stores/novel.js'
 import apiService from '../services/api.js'
@@ -376,6 +396,29 @@ const officialModels = [
   }
 ]
 
+// 模型默认API地址映射
+const modelApiEndpoints = {
+  // 通义千问（阿里云）
+  'qwen-max': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen-plus': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen-turbo': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen2.5-72b-instruct': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen2.5-14b-instruct': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen2.5-7b-instruct': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  
+  // 豆包（火山引擎）
+  'doubao-seed-1.8': 'https://ark.cn-beijing.volces.com/api/v3',
+  'doubao-pro-32k': 'https://ark.cn-beijing.volces.com/api/v3',
+  'doubao-pro-128k': 'https://ark.cn-beijing.volces.com/api/v3',
+  'doubao-lite-32k': 'https://ark.cn-beijing.volces.com/api/v3',
+  'doubao-lite-128k': 'https://ark.cn-beijing.volces.com/api/v3',
+  
+  // Kimi（Moonshot）
+  'moonshot-v1-8k': 'https://api.moonshot.cn/v1',
+  'moonshot-v1-32k': 'https://api.moonshot.cn/v1',
+  'moonshot-v1-128k': 'https://api.moonshot.cn/v1'
+}
+
 // 自定义配置可选模型
 const defaultModels = [
   {
@@ -402,6 +445,79 @@ const defaultModels = [
     id: 'gemini-2.5-pro-preview-05-06',
     name: 'gemini-2.5-pro-preview-05-06',
     description: 'gemini-2.5-pro-preview-05-06'
+  },
+  // 通义千问系列模型
+  {
+    id: 'qwen-max',
+    name: 'qwen-max',
+    description: '通义千问超强大模型'
+  },
+  {
+    id: 'qwen-plus',
+    name: 'qwen-plus',
+    description: '通义千问高性价比模型'
+  },
+  {
+    id: 'qwen-turbo',
+    name: 'qwen-turbo',
+    description: '通义千问快速响应模型'
+  },
+  {
+    id: 'qwen2.5-72b-instruct',
+    name: 'qwen2.5-72b-instruct',
+    description: '通义千问2.5 72B版本'
+  },
+  {
+    id: 'qwen2.5-14b-instruct',
+    name: 'qwen2.5-14b-instruct',
+    description: '通义千问2.5 14B版本'
+  },
+  {
+    id: 'qwen2.5-7b-instruct',
+    name: 'qwen2.5-7b-instruct',
+    description: '通义千问2.5 7B版本'
+  },
+  // 豆包系列模型
+  {
+    id: 'doubao-seed-1.8',
+    name: 'doubao-seed-1.8',
+    description: '豆包种子模型1.8版本'
+  },
+  {
+    id: 'doubao-pro-32k',
+    name: 'doubao-pro-32k',
+    description: '豆包专业版 32K上下文'
+  },
+  {
+    id: 'doubao-pro-128k',
+    name: 'doubao-pro-128k',
+    description: '豆包专业版 128K上下文'
+  },
+  {
+    id: 'doubao-lite-32k',
+    name: 'doubao-lite-32k',
+    description: '豆包轻量版 32K上下文'
+  },
+  {
+    id: 'doubao-lite-128k',
+    name: 'doubao-lite-128k',
+    description: '豆包轻量版 128K上下文'
+  },
+  // Kimi系列模型
+  {
+    id: 'moonshot-v1-8k',
+    name: 'moonshot-v1-8k',
+    description: 'Kimi 8K上下文模型'
+  },
+  {
+    id: 'moonshot-v1-32k',
+    name: 'moonshot-v1-32k',
+    description: 'Kimi 32K上下文模型'
+  },
+  {
+    id: 'moonshot-v1-128k',
+    name: 'moonshot-v1-128k',
+    description: 'Kimi 128K上下文模型'
   }
 ]
 
@@ -410,6 +526,16 @@ const availableModels = computed(() => {
 })
 
 const isApiConfigured = computed(() => store.isApiConfigured)
+
+// 监听模型选择变化，自动填充对应的API地址
+watch(() => customForm.selectedModel, (newModel) => {
+  if (newModel && modelApiEndpoints[newModel]) {
+    // 只有当API地址是默认值或者为空时，才自动填充
+    if (customForm.baseURL === 'https://api.openai.com/v1' || customForm.baseURL === '') {
+      customForm.baseURL = modelApiEndpoints[newModel]
+    }
+  }
+})
 
 const formatTemperature = (value) => {
   if (value <= 0.3) return '保守'
@@ -849,6 +975,60 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+/* 新增支持模型样式 */
+.supported-models {
+  margin-top: 16px;
+}
+
+.supported-models h5 {
+  margin: 16px 0 8px 0;
+  color: #34495e;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.model-group {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+
+.model-group h6 {
+  margin: 0 0 6px 0;
+  color: #2c3e50;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.model-group p {
+  margin: 0 0 4px 0;
+  color: #5a6c7d;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.model-group .api-tip {
+  color: #409EFF;
+  font-size: 11px;
+  font-family: monospace;
+  background: #ecf5ff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  margin-top: 6px;
+}
+
+.model-note {
+  margin-top: 12px;
+  padding: 8px 12px;
+  background: #f0f9eb;
+  border: 1px solid #c2e7b0;
+  border-radius: 4px;
+  color: #67c23a;
+  font-size: 12px;
 }
 
 /* 响应式布局 */
