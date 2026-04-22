@@ -592,8 +592,9 @@ import {
 import { useNovelStore } from '@/stores/novel'
 import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth'
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs?url'
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 const novelStore = useNovelStore()
 
