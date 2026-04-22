@@ -22,7 +22,7 @@
             :auto-upload="false"
             :on-change="handleFileChange"
             :on-exceed="handleFileExceed"
-            accept=".txt,.docx"
+            accept=".txt,.docx,.pdf"
             :limit="1"
             :show-file-list="false"
           >
@@ -34,7 +34,7 @@
             </div>
             <template #tip>
               <div class="el-upload__tip">
-                支持 .txt 和 .docx 格式 (选择编码: {{ selectedEncoding.toUpperCase() }})
+                支持 .txt、.docx 和 .pdf 格式 (选择编码: {{ selectedEncoding.toUpperCase() }})
               </div>
             </template>
           </el-upload>
@@ -590,6 +590,10 @@ import {
   Close, DocumentCopy, Loading, Check, MagicStick, Refresh, View, Edit
 } from '@element-plus/icons-vue'
 import { useNovelStore } from '@/stores/novel'
+import * as pdfjsLib from 'pdfjs-dist'
+import mammoth from 'mammoth'
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`
 
 const novelStore = useNovelStore()
 
@@ -753,54 +757,127 @@ const handleFileExceed = (files) => {
 
 const readFileContent = (file, encoding = null) => {
   const fileEncoding = encoding || selectedEncoding.value
+  const fileName = file.name.toLowerCase()
   
-  if (file.name.toLowerCase().endsWith('.docx')) {
+  if (fileName.endsWith('.pdf')) {
+    // .pdf文件处理
+    ElMessage.info('正在解析PDF文件，请稍候...')
+    parsePdfFile(file)
+  } else if (fileName.endsWith('.docx')) {
     // .docx文件处理（Word文档）
-    ElMessage.warning('暂不支持.docx文件编码选择，将使用默认编码')
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      // 这里可以添加docx解析逻辑
-      bookContent.value = e.target.result
-      detectChapters()
-      ElMessage.success('文件上传成功！')
-    }
-    reader.onerror = () => {
-      ElMessage.error('文件读取失败，请检查文件格式')
-    }
-    reader.readAsText(file, 'UTF-8')
-  } else {
+    ElMessage.info('正在解析Word文档，请稍候...')
+    parseDocxFile(file)
+  } else if (fileName.endsWith('.txt')) {
     // .txt文件处理
-    const reader = new FileReader()
-    reader.onload = (e) => {
-      let content = e.target.result
+    parseTxtFile(file, fileEncoding)
+  } else {
+    ElMessage.error('不支持的文件格式，请上传.txt、.docx或.pdf文件')
+  }
+}
+
+// 解析PDF文件
+const parsePdfFile = async (file) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+    
+    let fullText = ''
+    const totalPages = pdf.numPages
+    
+    for (let i = 1; i <= totalPages; i++) {
+      const page = await pdf.getPage(i)
+      const textContent = await page.getTextContent()
       
-      // 如果使用GBK编码但内容出现乱码，尝试重新解码
-      if (fileEncoding === 'gbk' && content.includes('�')) {
-        ElMessage.warning('检测到可能的编码问题，建议尝试UTF-8编码')
-      }
+      // 提取页面文本
+      let pageText = ''
+      let lastY = null
       
-      bookContent.value = content
-      detectChapters()
+      textContent.items.forEach((item) => {
+        // 处理换行：如果y坐标变化较大，添加换行
+        if (lastY !== null && Math.abs(item.transform[5] - lastY) > 5) {
+          pageText += '\n'
+        }
+        pageText += item.str + ' '
+        lastY = item.transform[5]
+      })
       
-      const encodingText = fileEncoding === 'gbk' ? 'GBK/GB2312' : 'UTF-8'
-      ElMessage.success(`文件上传成功！(${encodingText})`)
-    }
-    reader.onerror = () => {
-      ElMessage.error('文件读取失败，请检查文件编码或格式')
+      fullText += pageText.trim() + '\n\n'
     }
     
-    // 根据选择的编码读取文件
-    if (fileEncoding === 'gbk') {
-      reader.readAsText(file, 'GBK')
-    } else {
-      reader.readAsText(file, 'UTF-8')
+    // 清理多余的空格和换行
+    fullText = fullText.replace(/ +/g, ' ').replace(/\n{3,}/g, '\n\n').trim()
+    
+    bookContent.value = fullText
+    detectChapters()
+    ElMessage.success(`PDF文件解析成功！共 ${totalPages} 页`)
+  } catch (error) {
+    console.error('PDF解析失败:', error)
+    ElMessage.error(`PDF文件解析失败：${error.message}`)
+  }
+}
+
+// 解析DOCX文件
+const parseDocxFile = async (file) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer()
+    
+    // 使用mammoth提取纯文本
+    const result = await mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+    let text = result.value
+    
+    // 清理文本
+    text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    text = text.replace(/\n{3,}/g, '\n\n').trim()
+    
+    bookContent.value = text
+    detectChapters()
+    ElMessage.success('Word文档解析成功！')
+  } catch (error) {
+    console.error('DOCX解析失败:', error)
+    ElMessage.error(`Word文档解析失败：${error.message}`)
+  }
+}
+
+// 解析TXT文件
+const parseTxtFile = (file, fileEncoding) => {
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    let content = e.target.result
+    
+    // 如果使用GBK编码但内容出现乱码，尝试重新解码
+    if (fileEncoding === 'gbk' && content.includes('�')) {
+      ElMessage.warning('检测到可能的编码问题，建议尝试UTF-8编码')
     }
+    
+    bookContent.value = content
+    detectChapters()
+    
+    const encodingText = fileEncoding === 'gbk' ? 'GBK/GB2312' : 'UTF-8'
+    ElMessage.success(`文件上传成功！(${encodingText})`)
+  }
+  reader.onerror = () => {
+    ElMessage.error('文件读取失败，请检查文件编码或格式')
+  }
+  
+  // 根据选择的编码读取文件
+  if (fileEncoding === 'gbk') {
+    reader.readAsText(file, 'GBK')
+  } else {
+    reader.readAsText(file, 'UTF-8')
   }
 }
 
 // 重新读取文件（编码切换时使用）
 const rereadWithEncoding = () => {
   if (!uploadedFile.value) return
+  
+  const fileName = uploadedFile.value.name.toLowerCase()
+  
+  // PDF和DOCX文件不支持编码切换
+  if (fileName.endsWith('.pdf') || fileName.endsWith('.docx')) {
+    ElMessage.warning('PDF和Word文档不支持编码切换')
+    return
+  }
   
   ElMessage.info(`正在使用 ${selectedEncoding.value.toUpperCase()} 编码重新读取文件...`)
   readFileContent(uploadedFile.value.raw, selectedEncoding.value)
