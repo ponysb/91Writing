@@ -1,6 +1,6 @@
 {
   "name": "ai-novel-generator",
-  "version": "0.7.0",
+  "version": "1.7.0",
   "description": "AI小说写作工具",
   "type": "module",
   "scripts": {
@@ -18,6 +18,8 @@
     "element-plus": "^2.4.2",
     "file-saver": "^2.0.5",
     "highlight.js": "^11.9.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "marked": "^9.1.6",
     "pinia": "^2.1.7",
     "vue": "^3.3.8",

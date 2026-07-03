@@ -13,42 +13,16 @@ class APIService {
   // 加载用户配置
   loadUserConfig() {
     try {
-      // 检查新的配置结构
-      const configType = localStorage.getItem('apiConfigType') || 'official'
-      
-      let userConfig = null
-      
-      if (configType === 'official') {
-        // 加载官方配置
-        const saved = localStorage.getItem('officialApiConfig')
-        if (saved) {
-          userConfig = JSON.parse(saved)
-        }
+      const saved = localStorage.getItem('apiConfig')
+      if (saved) {
+        this.config = { ...this.config, ...JSON.parse(saved) }
       } else {
-        // 加载自定义配置
-        const saved = localStorage.getItem('customApiConfig')
-        if (saved) {
-          userConfig = JSON.parse(saved)
+        // 向后兼容：迁移旧的自定义配置
+        const legacyCustom = localStorage.getItem('customApiConfig')
+        if (legacyCustom) {
+          this.config = { ...this.config, ...JSON.parse(legacyCustom) }
+          localStorage.setItem('apiConfig', JSON.stringify(this.config))
         }
-      }
-      
-      // 如果新配置不存在，尝试加载旧的配置（向后兼容）
-      if (!userConfig) {
-        const oldSaved = localStorage.getItem('apiConfig')
-        if (oldSaved) {
-          userConfig = JSON.parse(oldSaved)
-          // 将旧配置迁移到新结构
-          if (configType === 'official') {
-            localStorage.setItem('officialApiConfig', JSON.stringify(userConfig))
-          } else {
-            localStorage.setItem('customApiConfig', JSON.stringify(userConfig))
-          }
-          localStorage.setItem('apiConfigType', configType)
-        }
-      }
-      
-      if (userConfig) {
-        this.config = { ...this.config, ...userConfig }
       }
     } catch (error) {
       console.error('加载用户API配置失败:', error)
@@ -63,17 +37,7 @@ class APIService {
   // 更新API配置
   updateConfig(newConfig) {
     this.config = { ...this.config, ...newConfig }
-    // 保存到localStorage（根据配置类型保存到对应位置）
     try {
-      const configType = localStorage.getItem('apiConfigType') || 'official'
-      
-      if (configType === 'official') {
-        localStorage.setItem('officialApiConfig', JSON.stringify(this.config))
-      } else {
-        localStorage.setItem('customApiConfig', JSON.stringify(this.config))
-      }
-      
-      // 同时更新旧的配置键以保持兼容性
       localStorage.setItem('apiConfig', JSON.stringify(this.config))
     } catch (error) {
       console.error('保存API配置失败:', error)

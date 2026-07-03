@@ -1,41 +1,27 @@
+version: '3.8'
+
 services:
-  # 开发环境
-  app-dev:
+  mo-zhang:
     build:
       context: .
-      target: development
+      dockerfile: Dockerfile
+      target: production
+    container_name: mo-zhang
     ports:
       - "3000:3000"
     volumes:
-      - .:/app
-      - /app/node_modules
-    environment:
-      - NODE_ENV=development
-    profiles:
-      - dev
-
-  # 生产环境
-  app-prod:
-    build:
-      context: .
-      target: production
-    ports:
-      - "80:80"
+      # 持久化数据库到本地
+      - ./data:/app/data
     environment:
       - NODE_ENV=production
+      - PORT=3000
+      - DATA_DIR=/app/data
+      - JWT_SECRET=${JWT_SECRET:-your-secret-key-change-in-production}
+      - TZ=Asia/Shanghai
     restart: unless-stopped
-    profiles:
-      - prod
-
-  # 使用外部nginx（可选）
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "8080:80"
-    volumes:
-      - ./dist:/usr/share/nginx/html:ro
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - app-prod
-    profiles:
-      - external-nginx 
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
