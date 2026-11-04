@@ -345,7 +345,12 @@ const toggleSidebar = () => {
 }
 
 const handleMenuSelect = (index) => {
-  router.push(index)
+  console.log('🎯 菜单选择:', index)
+  
+  // 防止重复跳转
+  if (index !== route.path) {
+    router.push(index)
+  }
 }
 
 // 公告相关功能
@@ -500,10 +505,49 @@ const initializeModelSelector = () => {
   }
 }
 
+// 用于记录用户的跳转来源
+const lastVisitedPage = ref('')
+
 // 监听路由变化
-watch(() => route.path, (newPath) => {
-  activeMenu.value = newPath
-}, { immediate: true })
+watch(() => route.path, (newPath, oldPath) => {
+  console.log('🧭 路由变化:', `${oldPath} -> ${newPath}`)
+  
+  // 路径到菜单项的映射
+  const getMenuActiveIndex = (path, fromPath) => {
+    // 直接匹配的路径
+    const directMatches = ['/', '/novels', '/prompts', '/genres', '/chapters', '/goals', '/billing', '/tools', '/short-story', '/book-analysis', '/settings']
+    
+    if (directMatches.includes(path)) {
+      // 记录用户访问的正常页面
+      lastVisitedPage.value = path
+      return path
+    }
+    
+    // 特殊路径映射
+    if (path.startsWith('/writer')) {
+      // Writer页面根据来源决定高亮哪个菜单
+      if (fromPath === '/chapters' || lastVisitedPage.value === '/chapters') {
+        console.log('📝 从章节管理进入Writer，保持章节管理高亮')
+        return '/chapters'
+      } else {
+        console.log('📝 从小说列表进入Writer，保持小说列表高亮') 
+        return '/novels'
+      }
+    }
+    
+    // 默认返回上次访问的页面或小说列表
+    return lastVisitedPage.value || '/novels'
+  }
+  
+  // 确保菜单状态正确更新
+  if (newPath) {
+    const menuIndex = getMenuActiveIndex(newPath, oldPath)
+    if (menuIndex !== activeMenu.value) {
+      activeMenu.value = menuIndex
+      console.log('📍 菜单激活状态已更新:', `${newPath} -> ${menuIndex}`)
+    }
+  }
+}, { immediate: true, flush: 'post' })
 
 // 监听API配置变化，更新模型选择器
 watch(() => [isApiConfigured.value, currentApiConfig.value], () => {

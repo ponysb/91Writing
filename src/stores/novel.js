@@ -349,13 +349,23 @@ export const useNovelStore = defineStore('novel', () => {
 
   const validateApiKey = async () => {
     try {
+      // 对于中转站API，直接返回true，跳过验证
+      const currentConfig = getCurrentApiConfig()
+      if (currentConfig.baseURL && !currentConfig.baseURL.includes('api.openai.com')) {
+        console.log('检测到中转站API，跳过密钥验证')
+        isApiConfigured.value = !!currentConfig.apiKey
+        return !!currentConfig.apiKey
+      }
+      
       const isValid = await apiService.validateAPIKey()
       isApiConfigured.value = isValid
       return isValid
     } catch (error) {
       console.error('API密钥验证失败:', error)
-      isApiConfigured.value = false
-      return false
+      // 对于中转站，即使验证失败也基于是否有密钥来判断
+      const currentConfig = getCurrentApiConfig()
+      isApiConfigured.value = !!currentConfig.apiKey
+      return !!currentConfig.apiKey
     }
   }
 

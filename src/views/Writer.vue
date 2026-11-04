@@ -79,10 +79,10 @@
                   </el-tooltip>
                 </div>
                 <div class="chapter-actions">
-                  <el-dropdown @command="(cmd) => handleChapterAction(cmd, chapter)">
-                    <el-button size="small" type="text">
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                <el-dropdown @command="(cmd) => handleChapterAction(cmd, chapter)">
+                  <el-button size="small" link>
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="edit">编辑信息</el-dropdown-item>
@@ -156,10 +156,10 @@
                   </div>
                 </div>
                 <div class="character-actions">
-                  <el-dropdown @command="(cmd) => handleCharacterAction(cmd, character)" trigger="click">
-                    <el-button size="small" type="text" @click.stop>
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                <el-dropdown @command="(cmd) => handleCharacterAction(cmd, character)" trigger="click">
+                  <el-button size="small" link @click.stop>
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="edit">
@@ -228,10 +228,10 @@
                   </div>
                 </div>
                 <div class="worldview-actions">
-                  <el-dropdown @command="(cmd) => handleWorldSettingAction(cmd, setting)" trigger="click">
-                    <el-button size="small" type="text" @click.stop>
-                      <el-icon><MoreFilled /></el-icon>
-                    </el-button>
+                <el-dropdown @command="(cmd) => handleWorldSettingAction(cmd, setting)" trigger="click">
+                  <el-button size="small" link @click.stop>
+                    <el-icon><MoreFilled /></el-icon>
+                  </el-button>
                     <template #dropdown>
                       <el-dropdown-menu>
                         <el-dropdown-item command="edit">
@@ -312,10 +312,20 @@
             <template #header>
               <div class="card-header">
                 <span>📊 事件时间线</span>
-                <el-button size="small" type="primary" @click="addEvent">
-                  <el-icon><Plus /></el-icon>
-                  新增
-                </el-button>
+                <div class="header-actions">
+                  <el-button size="small" @click="addEvent">
+                    <el-icon><Plus /></el-icon>
+                    手动创建
+                  </el-button>
+                  <el-button size="small" @click="showGlobalAIConfig = true">
+                    <el-icon><Setting /></el-icon>
+                    AI配置
+                  </el-button>
+                  <el-button size="small" type="primary" @click="openAIGenerateDialog">
+                    <el-icon><MagicStick /></el-icon>
+                    AI生成事件
+                  </el-button>
+                </div>
               </div>
             </template>
             
@@ -327,7 +337,7 @@
                     <h4>{{ event.title }}</h4>
                     <div class="event-actions">
                       <el-dropdown @command="(cmd) => handleEventAction(cmd, event)" trigger="click">
-                        <el-button size="small" type="text" @click.stop>
+                        <el-button size="small" link @click.stop>
                           <el-icon><MoreFilled /></el-icon>
                         </el-button>
                         <template #dropdown>
@@ -364,8 +374,22 @@
               </div>
               
               <div v-if="events.length === 0" class="empty-state">
-                <p>暂无事件记录</p>
-                <el-button size="small" @click="addEvent">添加第一个事件</el-button>
+                <div class="empty-content">
+                  <el-icon class="empty-icon"><Calendar /></el-icon>
+                  <h3>暂无事件记录</h3>
+                  <p>让AI帮您快速生成故事事件时间线</p>
+                  
+                  <div class="empty-actions">
+                    <el-button type="primary" @click="openAIGenerateDialog">
+                      <el-icon><MagicStick /></el-icon>
+                      AI智能生成
+                    </el-button>
+                    <el-button @click="addEvent">
+                      <el-icon><Plus /></el-icon>
+                      手动创建
+                    </el-button>
+                  </div>
+                </div>
               </div>
             </div>
           </el-card>
@@ -547,11 +571,18 @@
           </div>
         </el-form-item>
         <el-form-item label="标签">
-          <el-input v-model="characterTagInput" placeholder="输入标签后按回车" @keyup.enter="addCharacterTag">
+          <el-input 
+            v-model="characterTagInput" 
+            placeholder="输入标签，支持用逗号、分号、空格分隔批量添加" 
+            @keyup.enter="addCharacterTag"
+          >
             <template #append>
               <el-button @click="addCharacterTag">添加</el-button>
             </template>
           </el-input>
+          <el-text type="info" size="small" style="margin-top: 4px; display: block;">
+            💡 提示：可以输入"温柔,聪慧,知识分子"一次性添加多个标签
+          </el-text>
           <div v-if="characterForm.tags.length > 0" style="margin-top: 8px;">
             <el-tag 
               v-for="(tag, index) in characterForm.tags" 
@@ -639,6 +670,195 @@
       <template #footer>
         <el-button @click="showCorpusDialog = false">取消</el-button>
         <el-button type="primary" @click="saveCorpus">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- AI生成事件对话框 -->
+    <el-dialog 
+      v-model="showAIGenerateDialog" 
+      title="🤖 AI智能生成事件时间线" 
+      width="900px"
+      :close-on-click-modal="false"
+    >
+      <!-- 生成配置区域 -->
+      <div class="ai-generate-config">
+        <el-form :model="aiGenerateForm" label-width="100px">
+          <!-- 生成模式选择 -->
+          <el-form-item label="生成模式">
+            <el-radio-group v-model="aiGenerateForm.mode">
+              <el-radio label="timeline">时间线生成</el-radio>
+              <el-radio label="chapter">章节事件</el-radio>
+              <el-radio label="conflict">冲突事件</el-radio>
+              <el-radio label="character">角色事件</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          
+          <!-- 生成参数 -->
+          <div v-if="aiGenerateForm.mode === 'timeline'">
+            <el-form-item label="时间跨度">
+              <el-input-number v-model="aiGenerateForm.timelineSpan" :min="1" :max="30" />
+              <span class="form-tip">天</span>
+            </el-form-item>
+          </div>
+          
+          <div v-if="aiGenerateForm.mode === 'chapter'">
+            <el-form-item label="目标章节">
+              <el-select v-model="aiGenerateForm.targetChapter" placeholder="选择章节">
+                <el-option 
+                  v-for="chapter in chapters" 
+                  :key="chapter.id" 
+                  :label="chapter.title" 
+                  :value="chapter.title" 
+                />
+              </el-select>
+            </el-form-item>
+          </div>
+          
+          <!-- 生成数量 -->
+          <el-form-item label="生成数量">
+            <el-input-number v-model="aiGenerateForm.count" :min="1" :max="10" />
+            <span class="form-tip">个事件</span>
+          </el-form-item>
+          
+          <!-- 事件类型偏好 -->
+          <el-form-item label="事件类型">
+            <el-checkbox-group v-model="aiGenerateForm.eventTypes">
+              <el-checkbox label="action">动作/战斗</el-checkbox>
+              <el-checkbox label="dialogue">对话/交流</el-checkbox>
+              <el-checkbox label="emotion">情感/心理</el-checkbox>
+              <el-checkbox label="plot">剧情转折</el-checkbox>
+              <el-checkbox label="world">世界观展示</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+          
+          <!-- 章节约束 -->
+          <el-form-item label="约束章节">
+            <div class="chapter-constraint-selector">
+              <el-checkbox-group v-model="aiGenerateForm.chapterConstraints.selectedChapters">
+                <div class="chapter-grid">
+                  <div 
+                    v-for="chapter in chapters" 
+                    :key="chapter.id"
+                    class="chapter-option"
+                  >
+                    <el-checkbox :label="chapter.id">
+                      <div class="chapter-info">
+                        <div class="chapter-header">
+                          <h4>{{ chapter.title }}</h4>
+                          <el-tag :type="getChapterStatusType(chapter.status)" size="small">
+                            {{ getChapterStatusText(chapter.status) }}
+                          </el-tag>
+                        </div>
+                        <div class="chapter-meta">
+                          <span class="word-count">{{ chapter.wordCount || 0 }}字</span>
+                          <span class="update-time">{{ formatDate(chapter.updatedAt) }}</span>
+                        </div>
+                      </div>
+                    </el-checkbox>
+                  </div>
+                </div>
+              </el-checkbox-group>
+            </div>
+          </el-form-item>
+          
+          <!-- 时间线模式 -->
+          <el-form-item label="时间线模式">
+            <el-radio-group v-model="aiGenerateForm.chapterConstraints.timelineMode">
+              <el-radio label="continue">延续时间线</el-radio>
+              <el-radio label="restart">重新开始</el-radio>
+              <el-radio label="forward">向前发展</el-radio>
+              <el-radio label="backward">回溯补充</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          
+          
+          <!-- 自定义提示 -->
+          <el-form-item label="特殊要求">
+            <el-input 
+              v-model="aiGenerateForm.customPrompt" 
+              type="textarea" 
+              :rows="3"
+              placeholder="如：重点突出主角的成长，增加悬疑元素..."
+            />
+          </el-form-item>
+        </el-form>
+      </div>
+      
+      <!-- 生成结果区域 -->
+      <div v-if="aiGeneratedEvents.length > 0" class="ai-generate-results">
+        <h4>🎯 生成结果预览</h4>
+        <div class="events-preview">
+          <div class="preview-header">
+            <el-checkbox 
+              v-model="selectAll" 
+              :indeterminate="isIndeterminate"
+              @change="handleSelectAll"
+            >
+              全选 ({{ selectedEventsCount }}/{{ aiGeneratedEvents.length }})
+            </el-checkbox>
+          </div>
+          
+          <div class="events-list">
+            <div 
+              v-for="(event, index) in aiGeneratedEvents" 
+              :key="index"
+              class="event-preview-item"
+              :class="{ 'selected': event.selected }"
+            >
+              <div class="event-preview-content">
+                <div class="event-header">
+                  <el-checkbox v-model="event.selected" />
+                  <h4 class="event-title">{{ event.title }}</h4>
+                  <el-tag :type="getImportanceType(event.importance)" size="small">
+                    {{ getImportanceText(event.importance) }}
+                  </el-tag>
+                </div>
+                
+                <p class="event-description">{{ event.description }}</p>
+                
+                <div class="event-meta">
+                  <div class="meta-item">
+                    <el-icon><Clock /></el-icon>
+                    <span>{{ event.time }}</span>
+                  </div>
+                  <div class="meta-item">
+                    <el-icon><Document /></el-icon>
+                    <span>{{ event.chapter }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 操作按钮 -->
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="showAIGenerateDialog = false">取消</el-button>
+          <el-button @click="regenerateEvents" :loading="isGenerating">
+            <el-icon><Refresh /></el-icon>
+            重新生成
+          </el-button>
+          <el-button 
+            v-if="aiGeneratedEvents.length === 0"
+            type="primary" 
+            @click="generateEventsWithAI" 
+            :loading="isGenerating"
+          >
+            <el-icon><MagicStick /></el-icon>
+            开始生成
+          </el-button>
+          <el-button 
+            v-else
+            type="primary" 
+            @click="confirmAddEvents" 
+            :disabled="selectedEventsCount === 0"
+          >
+            <el-icon><Check /></el-icon>
+            添加选中事件 ({{ selectedEventsCount }})
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -1918,11 +2138,11 @@
               <!-- 流式输出区域 -->
               <div v-if="isOptimizeStreaming" class="streaming-area">
                 <div class="streaming-header">
-                  <span class="streaming-status">🤖 AI正在润色中...</span>
-                  <el-button size="small" type="text" @click="stopOptimizeStreaming">
-                    <el-icon><Close /></el-icon>
-                    停止
-                  </el-button>
+                <span class="streaming-status">🤖 AI正在润色中...</span>
+                <el-button size="small" link @click="stopOptimizeStreaming">
+                  <el-icon><Close /></el-icon>
+                  停止
+                </el-button>
                 </div>
                 <div class="streaming-content-box">
                   <div class="streaming-text">{{ optimizeStreamingContent }}</div>
@@ -2066,11 +2286,11 @@
               <!-- 流式输出区域 -->
               <div v-if="isContinueStreaming" class="streaming-area">
                 <div class="streaming-header">
-                  <span class="streaming-status">🤖 AI正在续写中...</span>
-                  <el-button size="small" type="text" @click="stopContinueStreaming">
-                    <el-icon><Close /></el-icon>
-                    停止
-                  </el-button>
+                <span class="streaming-status">🤖 AI正在续写中...</span>
+                <el-button size="small" link @click="stopContinueStreaming">
+                  <el-icon><Close /></el-icon>
+                  停止
+                </el-button>
                 </div>
                 <div class="streaming-content-box">
                   <div class="streaming-text">{{ continueStreamingContent }}</div>
@@ -2120,6 +2340,9 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 全局AI配置对话框 -->
+    <GlobalAIConfig v-model="showGlobalAIConfig" />
   </div>
 </template>
 
@@ -2134,7 +2357,11 @@ import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
 import '@wangeditor/editor/dist/css/style.css'
 import apiService from '../services/api.js'
 import billingService from '../services/billing.js'
+import storageService from '../services/storage.js'
+import db from '../services/simpleDB.js'
 import { useNovelStore } from '../stores/novel.js'
+import { globalAIConfig, enhanceUserPrompt } from '../services/aiConfig.js'
+import GlobalAIConfig from '../components/GlobalAIConfig.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -2422,6 +2649,31 @@ const eventForm = ref({
   importance: 'normal'
 })
 
+// AI生成事件相关数据
+const showAIGenerateDialog = ref(false)
+const aiGenerateForm = ref({
+  mode: 'timeline',
+  timelineSpan: 7,
+  targetChapter: '',
+  count: 5,
+  eventTypes: ['action', 'dialogue', 'emotion'],
+  customPrompt: '',
+  chapterConstraints: {
+    enabled: true,
+    selectedChapters: [],
+    timelineMode: 'continue',
+    chapterOrder: 'chronological',
+    timeReference: 'relative',
+    customTimeOffset: 0,
+    includeChapterEvents: true,
+    analyzeChapterContent: true
+  }
+})
+
+const aiGeneratedEvents = ref([])
+const isGenerating = ref(false)
+const showGlobalAIConfig = ref(false)
+
 // 编辑器配置
 const toolbarConfig = {}
 const editorConfig = {
@@ -2442,10 +2694,33 @@ const contentWordCount = computed(() => {
 })
 
 // 方法
-const goBack = () => {
-  // 自动保存当前章节
-  saveCurrentChapter()
-  router.push('/novels')
+const goBack = async () => {
+  try {
+    console.log('🔙 准备返回小说列表...')
+    
+    // 保存当前章节并等待完成
+    if (currentChapter.value && content.value !== undefined) {
+      saveCurrentChapter()
+      
+      // 等待一小段时间确保保存完成
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      console.log('💾 章节数据保存完成')
+    }
+    
+    // 跳转回小说列表
+    console.log('🎯 跳转到小说列表页面')
+    router.push('/novels')
+    
+  } catch (error) {
+    console.error('❌ 返回过程中发生错误:', error)
+    ElMessage.warning('保存数据时出现问题，但仍将返回列表')
+    
+    // 即使保存失败也要跳转，避免用户被困在页面
+    setTimeout(() => {
+      router.push('/novels')
+    }, 1000)
+  }
 }
 
 const selectChapter = (chapter) => {
@@ -2464,11 +2739,24 @@ const loadChapter = (chapter) => {
 }
 
 const saveCurrentChapter = () => {
-  if (currentChapter.value) {
-    currentChapter.value.content = content.value
-    currentChapter.value.wordCount = contentWordCount.value
-    currentChapter.value.updatedAt = new Date()
-    saveNovelData()
+  try {
+    if (currentChapter.value) {
+      console.log('💾 保存当前章节:', currentChapter.value.title)
+      
+      currentChapter.value.content = content.value
+      currentChapter.value.wordCount = contentWordCount.value
+      currentChapter.value.updatedAt = new Date()
+      
+      // 调用保存方法
+      saveNovelData()
+      
+      console.log('✅ 章节数据已更新')
+    } else {
+      console.log('⚠️ 没有当前章节需要保存')
+    }
+  } catch (error) {
+    console.error('❌ 保存章节时出错:', error)
+    // 不抛出错误，避免阻断其他操作
   }
 }
 
@@ -3860,9 +4148,10 @@ const getCorpusTypeText = (type) => {
 // 获取事件重要性样式
 const getImportanceType = (importance) => {
   const typeMap = {
-    'high': 'danger',
+    'low': 'info',
     'normal': 'primary',
-    'low': 'info'
+    'high': 'warning',
+    'critical': 'danger'
   }
   return typeMap[importance] || 'primary'
 }
@@ -5889,10 +6178,13 @@ ${customPrompt}
     }
     
     ElMessage.success('AI角色生成完成')
+    console.log('AI角色生成成功完成')
   } catch (error) {
     console.error('AI生成角色失败:', error)
+    console.error('错误详情:', error.stack)
     ElMessage.error(`角色生成失败: ${error.message}`)
   } finally {
+    console.log('AI角色生成流程结束，重置状态')
     isStreaming.value = false
     streamingContent.value = ''
   }
@@ -7146,13 +7438,25 @@ const saveCharacter = () => {
 
 // AI生成角色
 const generateCharacterAI = async () => {
-  if (!checkApiAndBalance()) return
+  console.log('=== 开始AI生成角色 ===')
+  console.log('角色名称:', characterForm.value.name)
+  console.log('当前小说:', currentNovel.value)
+  console.log('API配置检查...')
+  
+  if (!checkApiAndBalance()) {
+    console.log('API检查失败')
+    return
+  }
+  
+  console.log('API检查通过')
   
   if (!characterForm.value.name.trim()) {
+    console.log('角色名称为空')
     ElMessage.warning('请先输入角色姓名')
     return
   }
   
+  console.log('开始设置流式生成状态')
   // 设置流式生成状态
   isStreaming.value = true
   streamingType.value = 'character'
@@ -7224,12 +7528,14 @@ const generateCharacterAI = async () => {
     console.log('=== 单个角色生成最终提示词 ===')
     console.log(promptWithFormat)
     console.log('=== 提示词结束 ===')
+    console.log('准备调用 API...')
 
     const aiResponse = await apiService.generateTextStream(promptWithFormat, {
       maxTokens: null, // 移除token限制
       temperature: 0.8,
       type: 'character'
     }, (chunk, fullContent) => {
+      console.log('收到流式数据，chunk长度:', chunk.length, '总长度:', fullContent.length)
       // 实时更新流式内容
       streamingContent.value = fullContent
       
@@ -7279,10 +7585,24 @@ const generateCharacterAI = async () => {
 }
 
 const addCharacterTag = () => {
-  const tag = characterTagInput.value.trim()
-  if (tag && !characterForm.value.tags.includes(tag)) {
-    characterForm.value.tags.push(tag)
+  const input = characterTagInput.value.trim()
+  if (!input) return
+  
+  // 支持多种分隔符：逗号、分号、空格、中文逗号、中文分号
+  const separators = /[,，;；\s]+/
+  const newTags = input.split(separators)
+    .map(tag => tag.trim())
+    .filter(tag => tag && !characterForm.value.tags.includes(tag))
+  
+  if (newTags.length > 0) {
+    characterForm.value.tags.push(...newTags)
     characterTagInput.value = ''
+    
+    if (newTags.length > 1) {
+      ElMessage.success(`已添加 ${newTags.length} 个标签：${newTags.join('、')}`)
+    }
+  } else {
+    ElMessage.warning('标签已存在或输入为空')
   }
 }
 
@@ -7500,6 +7820,357 @@ const handleEventAction = (command, event) => {
   }
 }
 
+// AI生成事件相关方法
+const openAIGenerateDialog = () => {
+  showAIGenerateDialog.value = true
+  // 初始化时自动选择当前章节
+  if (currentChapter.value) {
+    aiGenerateForm.value.chapterConstraints.selectedChapters = [currentChapter.value.id]
+  }
+}
+
+const generateEventsWithAI = async () => {
+  try {
+    isGenerating.value = true
+    console.log('🤖 开始AI生成事件...')
+    
+    // 构建AI提示词
+    let prompt = buildEventGenerationPrompt()
+    console.log('📝 构建的提示词:', prompt.substring(0, 200) + '...')
+    
+    try {
+      // 调用AI API
+      const response = await apiService.generateTextStream(prompt, {}, null)
+      console.log('📦 AI响应:', response.substring(0, 200) + '...')
+      
+      // 解析AI响应
+      const events = parseAIEventResponse(response)
+      console.log('✅ 解析出事件:', events.length)
+      
+      // 处理生成结果
+      aiGeneratedEvents.value = events.map(event => ({
+        ...event,
+        selected: true,  // 默认全选
+        id: null,        // 待保存时生成
+        createdAt: new Date()
+      }))
+      
+      ElMessage.success(`成功生成 ${events.length} 个事件`)
+      
+    } catch (apiError) {
+      // 如果API调用失败，尝试使用简化的提示词
+      if (apiError.message.includes('sensitive_words_detected')) {
+        console.log('⚠️ 检测到敏感词，尝试使用简化提示词...')
+        prompt = buildSimpleEventPrompt()
+        
+        const response = await apiService.generateTextStream(prompt, {}, null)
+        const events = parseAIEventResponse(response)
+        
+        aiGeneratedEvents.value = events.map(event => ({
+          ...event,
+          selected: true,
+          id: null,
+          createdAt: new Date()
+        }))
+        
+        ElMessage.success(`使用简化模式生成 ${events.length} 个事件`)
+      } else {
+        throw apiError
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ AI生成事件失败:', error)
+    ElMessage.error('生成失败: ' + error.message)
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// 简化的提示词构建（用于敏感词检测时）
+const buildSimpleEventPrompt = () => {
+  const { count, eventTypes } = aiGenerateForm.value
+  const novelInfo = getNovelContextInfo()
+  
+  let prompt = `请为小说《${novelInfo.title}》生成${count}个事件。\n\n`
+  
+  prompt += `小说类型：${novelInfo.genre}\n`
+  prompt += `主要角色：${novelInfo.mainCharacters.join('、')}\n\n`
+  
+  if (eventTypes.length > 0) {
+    const typeMap = {
+      'action': '动作情节',
+      'dialogue': '对话交流', 
+      'emotion': '情感表达',
+      'plot': '剧情发展',
+      'world': '世界观展示'
+    }
+    const typeTexts = eventTypes.map(type => typeMap[type] || type)
+    prompt += `事件类型：${typeTexts.join('、')}\n\n`
+  }
+  
+  prompt += `请返回JSON格式：\n`
+  prompt += `[{"title": "事件标题", "description": "详细描述", "time": "时间点", "chapter": "相关章节", "importance": "normal", "tags": ["标签"]}]\n`
+  
+  return prompt
+}
+
+// 获取小说上下文信息
+const getNovelContextInfo = () => {
+  return {
+    title: currentNovel.value?.title || '未命名小说',
+    genre: currentNovel.value?.genre || '未知类型',
+    chapterCount: chapters.value?.length || 0,
+    mainCharacters: characters.value?.slice(0, 5).map(c => c.name) || [],
+    currentChapter: currentChapter.value?.title || '',
+    totalWordCount: chapters.value?.reduce((sum, c) => sum + (c.wordCount || 0), 0) || 0
+  }
+}
+
+const buildEventGenerationPrompt = () => {
+  const { mode, count, eventTypes, customPrompt, chapterConstraints } = aiGenerateForm.value
+  const novelInfo = getNovelContextInfo()
+  
+  let basePrompt = `请为小说《${novelInfo.title}》生成${count}个精彩的事件：\n\n`
+  
+  // 根据模式添加特定要求
+  switch (mode) {
+    case 'timeline':
+      basePrompt += `时间跨度：${aiGenerateForm.value.timelineSpan}天\n`
+      basePrompt += `需要保持时间逻辑的连贯性\n`
+      break
+    case 'chapter':
+      basePrompt += `目标章节：${aiGenerateForm.value.targetChapter}\n`
+      basePrompt += `事件要与该章节内容紧密相关\n`
+      break
+    case 'conflict':
+      basePrompt += `重点生成推动剧情发展的激烈冲突和转折\n`
+      basePrompt += `要有强烈的戏剧张力和紧张感\n`
+      break
+    case 'character':
+      basePrompt += `围绕主要角色生成发展事件\n`
+      basePrompt += `体现角色成长和变化\n`
+      break
+  }
+  
+  // 添加事件类型要求
+  if (eventTypes.length > 0) {
+    const typeMap = {
+      'action': '动作情节',
+      'dialogue': '对话交流',
+      'emotion': '情感表达',
+      'plot': '剧情发展',
+      'world': '世界观展示'
+    }
+    const typeTexts = eventTypes.map(type => typeMap[type] || type)
+    basePrompt += `事件类型偏好：${typeTexts.join('、')}\n`
+  }
+  
+  // 添加自定义要求
+  if (customPrompt.trim()) {
+    basePrompt += `特殊要求：${customPrompt}\n`
+  }
+  
+  // 添加小说上下文
+  basePrompt += `\n小说信息：\n`
+  basePrompt += `类型：${novelInfo.genre}\n`
+  basePrompt += `当前章节数：${novelInfo.chapterCount}\n`
+  basePrompt += `主要角色：${novelInfo.mainCharacters.join('、')}\n`
+  
+  // 添加现有事件作为参考
+  if (events.value.length > 0) {
+    basePrompt += `\n现有事件参考：\n`
+    events.value.slice(-3).forEach(event => {
+      basePrompt += `- ${event.title} (${event.time}): ${event.description}\n`
+    })
+  }
+  
+  // 章节约束
+  if (chapterConstraints.enabled && chapterConstraints.selectedChapters.length > 0) {
+    const selectedChapters = chapterConstraints.selectedChapters.map(id =>
+      chapters.value.find(c => c.id === id)
+    ).filter(Boolean)
+    
+    basePrompt += `\n【章节约束要求】\n`
+    basePrompt += `基于以下章节生成事件：\n`
+    
+    selectedChapters.forEach((chapter, index) => {
+      basePrompt += `${index + 1}. ${chapter.title}\n`
+      // 只取前100个字符，避免内容过长
+      const contentPreview = chapter.content?.substring(0, 100) || '暂无内容'
+      basePrompt += `   内容概要：${contentPreview}...\n`
+      basePrompt += `   字数：${chapter.wordCount || 0}字\n`
+      basePrompt += `   状态：${getChapterStatusText(chapter.status)}\n\n`
+    })
+    
+    // 时间线模式要求
+    const timelineModeText = {
+      continue: '延续时间线',
+      restart: '重新开始',
+      forward: '向前发展',
+      backward: '回溯补充'
+    }
+    
+    basePrompt += `时间线模式：${timelineModeText[chapterConstraints.timelineMode]}\n`
+    
+    switch (chapterConstraints.timelineMode) {
+      case 'continue':
+        basePrompt += `- 在现有时间线基础上继续发展\n`
+        basePrompt += `- 保持与前面章节的时间连续性\n`
+        break
+      case 'restart':
+        basePrompt += `- 从指定章节开始新的时间线\n`
+        basePrompt += `- 可以重新定义时间起点\n`
+        break
+      case 'forward':
+        basePrompt += `- 生成未来时间的事件\n`
+        basePrompt += `- 时间偏移：${chapterConstraints.customTimeOffset}天后\n`
+        break
+      case 'backward':
+        basePrompt += `- 补充过去时间的事件\n`
+        basePrompt += `- 时间偏移：${chapterConstraints.customTimeOffset}天前\n`
+        break
+    }
+  }
+  
+  // 输出格式要求
+  basePrompt += `\n请严格按照以下JSON格式返回，内容要生动精彩：\n`
+  basePrompt += `[{\n`
+  basePrompt += `  "title": "事件标题",\n`
+  basePrompt += `  "description": "详细描述",\n`
+  basePrompt += `  "time": "时间点（如：第三天傍晚）",\n`
+  basePrompt += `  "chapter": "相关章节",\n`
+  basePrompt += `  "importance": "normal|high|critical",\n`
+  basePrompt += `  "tags": ["标签1", "标签2"]\n`
+  basePrompt += `}]\n`
+  
+  return basePrompt
+}
+
+const parseAIEventResponse = (response) => {
+  try {
+    // 尝试直接解析JSON
+    const events = JSON.parse(response)
+    
+    // 验证数据结构
+    if (!Array.isArray(events)) {
+      throw new Error('AI返回格式错误：应为数组')
+    }
+    
+    // 验证每个事件的基本字段
+    return events.map((event, index) => {
+      if (!event.title || !event.description) {
+        throw new Error(`第${index + 1}个事件缺少必要字段`)
+      }
+      
+      return {
+        title: event.title || `事件${index + 1}`,
+        description: event.description || '暂无描述',
+        time: event.time || '时间待定',
+        chapter: event.chapter || currentChapter.value?.title || '',
+        importance: ['low', 'normal', 'high', 'critical'].includes(event.importance) 
+          ? event.importance 
+          : 'normal',
+        tags: event.tags || []
+      }
+    })
+    
+  } catch (error) {
+    console.error('解析AI响应失败:', error)
+    
+    // 降级处理：尝试从文本中提取事件信息
+    return extractEventsFromText(response)
+  }
+}
+
+const extractEventsFromText = (text) => {
+  const events = []
+  const lines = text.split('\n').filter(line => line.trim())
+  
+  lines.forEach((line, index) => {
+    // 简单的文本解析逻辑
+    if (line.includes('：') || line.includes(':')) {
+      const [title, ...descParts] = line.split(/[：:]/)
+      events.push({
+        title: title.trim(),
+        description: descParts.join(':').trim() || '暂无描述',
+        time: '时间待定',
+        chapter: currentChapter.value?.title || '',
+        importance: 'normal',
+        tags: []
+      })
+    }
+  })
+  
+  return events
+}
+
+// 计算属性和方法
+const selectedEventsCount = computed(() => {
+  return aiGeneratedEvents.value.filter(event => event.selected).length
+})
+
+const selectAll = computed({
+  get: () => aiGeneratedEvents.value.length > 0 && selectedEventsCount.value === aiGeneratedEvents.value.length,
+  set: (value) => {
+    aiGeneratedEvents.value.forEach(event => {
+      event.selected = value
+    })
+  }
+})
+
+const isIndeterminate = computed(() => {
+  const count = selectedEventsCount.value
+  return count > 0 && count < aiGeneratedEvents.value.length
+})
+
+const handleSelectAll = () => {
+  // 已在computed中处理
+}
+
+const regenerateEvents = () => {
+  generateEventsWithAI()
+}
+
+const confirmAddEvents = () => {
+  const selectedEvents = aiGeneratedEvents.value.filter(event => event.selected)
+  
+  if (selectedEvents.length === 0) {
+    ElMessage.warning('请至少选择一个事件')
+    return
+  }
+  
+  // 添加到事件列表
+  selectedEvents.forEach(event => {
+    const newEvent = {
+      ...event,
+      id: Date.now() + Math.random(), // 生成唯一ID
+      createdAt: new Date()
+    }
+    events.value.push(newEvent)
+  })
+  
+  // 保存数据
+  saveNovelData()
+  
+  // 关闭对话框
+  showAIGenerateDialog.value = false
+  aiGeneratedEvents.value = []
+  
+  ElMessage.success(`成功添加 ${selectedEvents.length} 个事件`)
+}
+
+// 重要程度相关方法
+const getImportanceText = (importance) => {
+  const textMap = {
+    low: '次要',
+    normal: '一般',
+    high: '重要',
+    critical: '关键'
+  }
+  return textMap[importance] || '一般'
+}
+
 // 更新章节状态
 const updateChapterStatus = () => {
   if (!currentChapter.value) return
@@ -7607,85 +8278,145 @@ const autoSave = () => {
 const saveNovelData = () => {
   if (!currentNovel.value) return
   
-  const totalWordCount = chapters.value.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
-  
-  const novelData = {
-    ...currentNovel.value,
-    chapterList: chapters.value,
-    characters: characters.value,
-    worldSettings: novelStore.worldSettings,
-    corpusData: corpusData.value,
-    events: events.value,
-    updatedAt: new Date(),
-    wordCount: totalWordCount,
-    // 保持兼容性的字段
-    chapters: chapters.value.length,
-    totalWords: totalWordCount
-  }
-  
-  const novels = JSON.parse(localStorage.getItem('novels') || '[]')
-  const index = novels.findIndex(n => n.id === currentNovel.value.id)
-  if (index > -1) {
-    novels[index] = novelData
-  } else {
-    novels.push(novelData)
-  }
-  localStorage.setItem('novels', JSON.stringify(novels))
+  // Fire and forget async save
+  (async () => {
+    try {
+      const totalWordCount = chapters.value.reduce((sum, ch) => sum + (ch.wordCount || 0), 0)
+      
+      const novelData = {
+        ...currentNovel.value,
+        updatedAt: new Date(),
+        wordCount: totalWordCount,
+        // 保持兼容性的字段
+        chapters: chapters.value.length,
+        totalWords: totalWordCount
+      }
+      
+      // 保存小说基本信息到 IndexedDB
+      await db.saveNovel(novelData)
+      
+      // 保存章节数据
+      for (const chapter of chapters.value) {
+        await db.saveChapter({
+          ...chapter,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存角色数据
+      for (const character of characters.value) {
+        await db.saveCharacter({
+          ...character,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存世界观设定数据
+      for (const setting of novelStore.worldSettings) {
+        await db.saveWorldSetting({
+          ...setting,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存语料库数据
+      for (const corpus of corpusData.value) {
+        await db.saveCorpus({
+          ...corpus,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      // 保存事件数据
+      for (const event of events.value) {
+        await db.saveEvent({
+          ...event,
+          novelId: currentNovel.value.id
+        })
+      }
+      
+      console.log('💾 小说数据已保存到 IndexedDB')
+    } catch (error) {
+      console.error('❌ 保存小说数据失败:', error)
+      ElMessage.error('保存失败: ' + error.message)
+    }
+  })()
 }
 
-// 初始化
-const initNovel = () => {
+// 初始化（使用 IndexedDB）
+const initNovel = async () => {
   const novelId = parseInt(route.query.novelId)
   if (novelId) {
-    // 从localStorage加载小说数据
-    const novels = JSON.parse(localStorage.getItem('novels') || '[]')
-    const novel = novels.find(n => n.id === novelId)
-    
-    if (novel) {
-      currentNovel.value = novel
+    try {
+      console.log('📚 正在从 IndexedDB 加载小说数据...', novelId)
       
-      // 处理日期对象
-      if (novel.chapterList) {
-        chapters.value = novel.chapterList.map(chapter => {
-          // 修复旧数据中可能存在的'outline'状态
-          let fixedStatus = chapter.status || 'draft'
-          if (fixedStatus === 'outline') {
-            fixedStatus = 'draft'
-          }
-          
-          return {
-            ...chapter,
-            createdAt: new Date(chapter.createdAt),
-            updatedAt: new Date(chapter.updatedAt),
-            // 确保状态字段存在，兼容旧数据，并修复错误的'outline'状态
-            status: fixedStatus
-          }
-        })
+      // 从 IndexedDB 加载小说数据
+      const novel = await db.getNovel(novelId)
+      
+      if (novel) {
+        console.log('✅ 找到小说:', novel.title)
+        currentNovel.value = novel
         
-        // 如果存在章节，自动选择第一章节
-        if (chapters.value.length > 0) {
-          selectChapter(chapters.value[0])
+        // 加载章节数据
+        const chapterList = await db.getChaptersByNovel(novelId)
+        
+        if (chapterList && chapterList.length > 0) {
+          chapters.value = chapterList.map(chapter => {
+            // 修复旧数据中可能存在的'outline'状态
+            let fixedStatus = chapter.status || 'draft'
+            if (fixedStatus === 'outline') {
+              fixedStatus = 'draft'
+            }
+            
+            return {
+              ...chapter,
+              createdAt: new Date(chapter.createdAt),
+              updatedAt: new Date(chapter.updatedAt),
+              // 确保状态字段存在，兼容旧数据，并修复错误的'outline'状态
+              status: fixedStatus
+            }
+          })
+          
+          // 如果存在章节，自动选择第一章节
+          if (chapters.value.length > 0) {
+            selectChapter(chapters.value[0])
+          }
+        } else {
+          chapters.value = []
         }
         
-        // 保存修复后的数据
-        saveNovelData()
+        // 加载角色数据
+        const characterList = await db.getCharactersByNovel(novelId)
+        characters.value = characterList || []
+        
+        // 加载世界观设定数据
+        const worldSettingsList = await db.getWorldSettingsByNovel(novelId)
+        // 先清空store中的世界观设定
+        novelStore.worldSettings.splice(0, novelStore.worldSettings.length)
+        // 添加小说的世界观设定到store
+        if (worldSettingsList && worldSettingsList.length > 0) {
+          worldSettingsList.forEach(setting => {
+            novelStore.worldSettings.push(setting)
+          })
+        }
+        
+        // 加载语料库数据
+        const corpusList = await db.getCorpusByNovel(novelId)
+        corpusData.value = corpusList || []
+        
+        // 加载事件数据
+        const eventsList = await db.getEventsByNovel(novelId)
+        events.value = eventsList || []
+        
+        console.log('✅ 小说数据加载完成')
+      } else {
+        console.log('❌ 未找到小说:', novelId)
+        ElMessage.error('小说不存在')
+        router.push('/novels')
       }
-      
-      // 加载相关数据
-      characters.value = novel.characters || []
-      // 加载世界观设定到store中
-      // 先清空store中的世界观设定
-      novelStore.worldSettings.splice(0, novelStore.worldSettings.length)
-      // 添加小说的世界观设定到store
-      if (novel.worldSettings && novel.worldSettings.length > 0) {
-        novel.worldSettings.forEach(setting => {
-          novelStore.worldSettings.push(setting)
-        })
-      }
-      corpusData.value = novel.corpusData || []
-      events.value = novel.events || []
-    } else {
-      ElMessage.error('小说不存在')
+    } catch (error) {
+      console.error('❌ 加载小说数据失败:', error)
+      ElMessage.error('加载小说数据失败: ' + error.message)
       router.push('/novels')
     }
   } else {
@@ -7694,33 +8425,79 @@ const initNovel = () => {
   }
 }
 
-// 生命周期
-onMounted(() => {
-  initNovel()
+// 生命周期管理 - 修复内存泄漏
+const cleanupFunctions = []  // 存储所有需要清理的函数引用
+
+onMounted(async () => {
+  await initNovel()
   loadPrompts()
+  
+  // 初始化自动保存（保存定时器引用以便清理）
+  const autoSaveInterval = setInterval(() => {
+    if (currentChapter.value) {
+      saveCurrentChapter()
+    }
+  }, 30000) // 每30秒自动保存
+  
+  cleanupFunctions.push(() => clearInterval(autoSaveInterval))
 })
 
 onUnmounted(() => {
-  // 页面卸载时自动保存
+  console.log('🧹 开始清理 Writer 组件资源...')
+  
+  // 1. 清理定时器
   if (autoSaveTimer) {
     clearTimeout(autoSaveTimer)
   }
-  saveCurrentChapter()
   
-  if (editorRef.value) {
-    editorRef.value.destroy()
+  // 2. 保存当前章节
+  try {
+    saveCurrentChapter()
+  } catch (error) {
+    console.error('保存章节失败:', error)
   }
+  
+  // 3. 销毁编辑器实例
+  if (editorRef.value) {
+    try {
+      editorRef.value.destroy()
+      editorRef.value = null
+    } catch (error) {
+      console.error('销毁编辑器失败:', error)
+    }
+  }
+  
+  // 4. 执行所有清理函数
+  cleanupFunctions.forEach(cleanup => {
+    try {
+      cleanup()
+    } catch (error) {
+      console.error('清理函数执行失败:', error)
+    }
+  })
+  
+  // 5. 清空数据引用，帮助垃圾回收
+  chapters.value = []
+  characters.value = []
+  corpusData.value = []
+  events.value = []
+  availablePrompts.value = []
+  
+  console.log('✅ Writer 组件资源清理完成')
 })
 
 // 监听路由参数变化
-watch(() => route.query.novelId, () => {
+const routeWatcher = watch(() => route.query.novelId, async () => {
   if (route.query.novelId) {
     // 重置当前章节
     currentChapter.value = null
     content.value = ''
-    initNovel()
+    await initNovel()
   }
 })
+
+// 将 watcher 清理函数添加到清理列表
+cleanupFunctions.push(() => routeWatcher())
 
 // 批量生成角色提示词相关函数
 const openBatchCharacterPromptSelector = () => {
@@ -10607,6 +11384,182 @@ ${customPrompt}`
   border-color: #409eff;
   background-color: #ecf5ff;
   box-shadow: 0 0 0 1px #409eff;
+}
+
+/* AI生成事件相关样式 */
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.empty-content {
+  text-align: center;
+  padding: 40px 20px;
+}
+
+.empty-icon {
+  font-size: 48px;
+  color: #c0c4cc;
+  margin-bottom: 16px;
+}
+
+.empty-content h3 {
+  margin: 16px 0 8px;
+  color: #606266;
+}
+
+.empty-content p {
+  color: #909399;
+  margin-bottom: 24px;
+}
+
+.empty-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.ai-generate-config {
+  margin-bottom: 20px;
+}
+
+.form-tip {
+  margin-left: 8px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.chapter-constraint-selector {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.chapter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.chapter-option {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.3s;
+}
+
+.chapter-option:hover {
+  border-color: #409eff;
+  background-color: #f0f9ff;
+}
+
+.chapter-info {
+  margin-left: 8px;
+}
+
+.chapter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.chapter-header h4 {
+  margin: 0;
+  font-size: 14px;
+  color: #303133;
+}
+
+.chapter-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.ai-generate-results {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e4e7ed;
+}
+
+.events-preview {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.preview-header {
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e4e7ed;
+}
+
+.events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.event-preview-item {
+  border: 1px solid #e4e7ed;
+  border-radius: 6px;
+  padding: 16px;
+  transition: all 0.3s;
+}
+
+.event-preview-item:hover {
+  border-color: #409eff;
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+}
+
+.event-preview-item.selected {
+  border-color: #409eff;
+  background-color: #f0f9ff;
+}
+
+.event-preview-content {
+  margin-left: 8px;
+}
+
+.event-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.event-title {
+  margin: 0;
+  font-size: 16px;
+  color: #303133;
+  flex: 1;
+}
+
+.event-description {
+  margin: 8px 0;
+  color: #606266;
+  line-height: 1.5;
+}
+
+.event-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: #909399;
+}
+
+.meta-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
 .character-header {

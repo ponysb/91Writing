@@ -1,6 +1,7 @@
 import apiConfig from '../config/api.json'
 import billingService from './billing.js'
 import { ElMessage } from 'element-plus'
+import { enhanceUserPrompt, getAICallParams } from './aiConfig.js'
 
 class APIService {
   constructor() {
@@ -8,6 +9,23 @@ class APIService {
     this.proxyConfig = apiConfig.proxy
     // 尝试从localStorage加载用户配置
     this.loadUserConfig()
+    
+    // 重试配置
+    this.retryConfig = {
+      maxRetries: 3,          // 最大重试次数
+      baseDelay: 1000,        // 基础延迟（毫秒）
+      maxDelay: 10000,        // 最大延迟（毫秒）
+      timeout: 120000         // 超时时间（2分钟）
+    }
+    
+    // 统计信息
+    this.stats = {
+      totalCalls: 0,
+      successfulCalls: 0,
+      failedCalls: 0,
+      retries: 0,
+      averageLatency: 0
+    }
   }
   
   // 加载用户配置
@@ -80,9 +98,106 @@ class APIService {
     }
   }
 
+  /**
+   * 指数退避重试函数
+   * @param {Function} fn - 要重试的函数
+   * @param {Number} maxRetries - 最大重试次数
+   * @param {Number} baseDelay - 基础延迟时间（毫秒）
+   */
+  async retryWithBackoff(fn, maxRetries = 3, baseDelay = 1000) {
+    let lastError
+    
+    for (let i = 0; i < maxRetries; i++) {
+      try {
+        const startTime = Date.now()
+        const result = await fn()
+        
+        // 统计成功调用
+        this.stats.totalCalls++
+        this.stats.successfulCalls++
+        const latency = Date.now() - startTime
+        this.stats.averageLatency = 
+          (this.stats.averageLatency * (this.stats.successfulCalls - 1) + latency) / this.stats.successfulCalls
+        
+        if (i > 0) {
+          console.log(`✅ 第 ${i + 1} 次重试成功`)
+          ElMessage.success(`重试成功！`)
+        }
+        
+        return result
+      } catch (error) {
+        lastError = error
+        
+        // 最后一次重试失败，直接抛出
+        if (i === maxRetries - 1) {
+          this.stats.totalCalls++
+          this.stats.failedCalls++
+          throw error
+        }
+        
+        // 记录重试
+        this.stats.retries++
+        
+        // 计算延迟时间（指数退避 + 随机抖动）
+        const delay = Math.min(
+          baseDelay * Math.pow(2, i) + Math.random() * 1000,
+          this.retryConfig.maxDelay
+        )
+        
+        console.log(`⚠️ 第 ${i + 1} 次尝试失败，${Math.round(delay)}ms 后重试...`)
+        console.log(`错误信息: ${error.message}`)
+        
+        // 如果不是网络错误，不重试
+        if (error.message && !this.isRetryableError(error)) {
+          console.log('❌ 非可重试错误，停止重试')
+          throw error
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, delay))
+      }
+    }
+    
+    throw lastError
+  }
+
+  /**
+   * 判断是否为可重试的错误
+   */
+  isRetryableError(error) {
+    const retryableMessages = [
+      'network',
+      'timeout',
+      'abort',
+      'fetch',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ENOTFOUND',
+      '429', // Too Many Requests
+      '500', // Internal Server Error
+      '502', // Bad Gateway
+      '503', // Service Unavailable
+      '504'  // Gateway Timeout
+    ]
+    
+    const errorMessage = error.message.toLowerCase()
+    return retryableMessages.some(msg => errorMessage.includes(msg.toLowerCase()))
+  }
+
   // 构建请求URL
   buildURL(endpoint) {
-    return `${this.config.baseURL}${endpoint}`
+    let fullURL
+    // 如果baseURL已经包含chat/completions（中转站完整URL），直接使用
+    if (this.config.baseURL.includes('chat/completions')) {
+      fullURL = this.config.baseURL
+    } else if (this.config.baseURL.endsWith('/v1')) {
+      // 标准格式：baseURL以/v1结尾，添加endpoint
+      fullURL = `${this.config.baseURL}${endpoint}`
+    } else {
+      // 兼容格式：baseURL不以/v1结尾，添加/v1和endpoint
+      fullURL = `${this.config.baseURL}/v1${endpoint}`
+    }
+    console.log('构建API URL:', fullURL) // 调试：查看完整URL
+    return fullURL
   }
 
   // 构建请求头
@@ -119,7 +234,9 @@ class APIService {
     }
   }
 
-  // 生成文本内容
+  /**
+   * 生成文本内容（带重试和友好错误提示）
+   */
   async generateText(prompt, options = {}) {
     const model = options.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
     
@@ -139,58 +256,162 @@ class APIService {
       stream: false
     }
 
-    try {
-      const response = await this.makeRequest('/chat/completions', {
-        body: JSON.stringify(requestBody)
-      })
-
-      const content = response.choices[0]?.message?.content || ''
-      const usage = response.usage
-      
-      // 记录实际的token使用情况
-      if (usage) {
-        billingService.recordAPICall({
-          type: options.type || 'generation',
-          model: model,
-          content: prompt,
-          response: content,
-          inputTokens: usage.prompt_tokens || 0,
-          outputTokens: usage.completion_tokens || 0,
-          status: 'success'
+    const executeRequest = async () => {
+      try {
+        const response = await this.makeRequest('/chat/completions', {
+          body: JSON.stringify(requestBody)
         })
-      } else {
-        // 如果API没有返回usage信息，使用估算值
-        const outputTokens = billingService.estimateTokens(content)
+
+        const content = response.choices[0]?.message?.content || ''
+        const usage = response.usage
+        
+        // 记录实际的token使用情况
+        if (usage) {
+          billingService.recordAPICall({
+            type: options.type || 'generation',
+            model: model,
+            content: prompt,
+            response: content,
+            inputTokens: usage.prompt_tokens || 0,
+            outputTokens: usage.completion_tokens || 0,
+            status: 'success'
+          })
+        } else {
+          // 如果API没有返回usage信息，使用估算值
+          const outputTokens = billingService.estimateTokens(content)
+          billingService.recordAPICall({
+            type: options.type || 'generation',
+            model: model,
+            content: prompt,
+            response: content,
+            inputTokens: estimatedInputTokens,
+            outputTokens: outputTokens,
+            status: 'success'
+          })
+        }
+
+        return content
+      } catch (error) {
+        // 记录失败的API调用
         billingService.recordAPICall({
           type: options.type || 'generation',
           model: model,
           content: prompt,
-          response: content,
+          response: '',
           inputTokens: estimatedInputTokens,
-          outputTokens: outputTokens,
-          status: 'success'
+          outputTokens: 0,
+          status: 'failed'
         })
+        
+        // 友好的错误提示
+        const friendlyError = this.getFriendlyErrorMessage(error)
+        throw new Error(friendlyError)
       }
+    }
 
-      return content
+    // 使用重试机制
+    try {
+      return await this.retryWithBackoff(
+        executeRequest,
+        this.retryConfig.maxRetries,
+        this.retryConfig.baseDelay
+      )
     } catch (error) {
-      // 记录失败的API调用
-      billingService.recordAPICall({
-        type: options.type || 'generation',
-        model: model,
-        content: prompt,
-        response: '',
-        inputTokens: estimatedInputTokens,
-        outputTokens: 0,
-        status: 'failed'
-      })
+      console.error('生成文本失败（已重试）:', error)
       throw error
+    }
+  }
+
+  /**
+   * 将技术性错误转换为用户友好的错误消息
+   */
+  getFriendlyErrorMessage(error) {
+    const errorMessage = error.message || error.toString()
+    
+    // API 密钥相关错误
+    if (errorMessage.includes('401') || errorMessage.includes('Unauthorized') || errorMessage.includes('Invalid API')) {
+      return 'API 密钥无效，请检查配置'
+    }
+    
+    // 配额/余额不足
+    if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+      return 'API 调用次数已达上限，请稍后重试或充值'
+    }
+    
+    // 网络连接问题
+    if (errorMessage.includes('network') || errorMessage.includes('fetch') || errorMessage.includes('timeout')) {
+      return '网络连接失败，请检查网络后重试'
+    }
+    
+    // 服务器错误
+    if (errorMessage.includes('500') || errorMessage.includes('502') || errorMessage.includes('503')) {
+      return 'AI 服务暂时不可用，请稍后重试'
+    }
+    
+    // 内容过滤
+    if (errorMessage.includes('content_filter') || errorMessage.includes('policy')) {
+      return '内容不符合使用规范，请修改后重试'
+    }
+    
+    // Token 超限
+    if (errorMessage.includes('context_length') || errorMessage.includes('max_tokens')) {
+      return '输入内容过长，请缩短后重试'
+    }
+    
+    // 默认错误
+    return '生成失败，请重试或检查 API 配置'
+  }
+
+  /**
+   * 改进的流式生成文本内容（带重试和中断恢复）
+   */
+  async generateTextStreamWithRetry(prompt, options = {}, onChunk = null) {
+    const maxRetries = this.retryConfig.maxRetries
+    let retryCount = 0
+    let savedContent = '' // 保存已生成的内容
+    
+    const attemptGeneration = async () => {
+      try {
+        return await this.generateTextStream(prompt, options, (chunk, fullContent) => {
+          savedContent = fullContent // 实时保存当前内容
+          if (onChunk) {
+            onChunk(chunk, fullContent)
+          }
+        })
+      } catch (error) {
+        retryCount++
+        
+        // 网络错误且有已生成的内容，询问用户是否重试
+        if (retryCount < maxRetries && savedContent.length > 0) {
+          console.warn(`⚠️ 生成中断，已获得 ${savedContent.length} 字符，正在重试...`)
+          ElMessage.warning(`生成中断，已保存 ${savedContent.length} 字，正在重试...`)
+          throw error // 继续重试
+        }
+        
+        throw error
+      }
+    }
+    
+    try {
+      return await this.retryWithBackoff(attemptGeneration, maxRetries, this.retryConfig.baseDelay)
+    } catch (finalError) {
+      // 如果最终失败，但有已生成的内容，返回它
+      if (savedContent.length > 0) {
+        ElMessage.warning(`生成中断，但已获得部分内容 (${savedContent.length} 字)`)
+        return savedContent
+      }
+      throw finalError
     }
   }
 
   // 流式生成文本内容
   async generateTextStream(prompt, options = {}, onChunk = null) {
     console.log('开始流式生成，prompt:', prompt.substring(0, 100) + '...') // 调试日志
+    console.log('当前API配置:', {
+      baseURL: this.config.baseURL,
+      hasApiKey: !!this.config.apiKey,
+      apiKeyLength: this.config.apiKey?.length || 0
+    }) // 调试：查看当前配置
     
     // 验证配置的完整性
     if (!this.config.apiKey || this.config.apiKey.trim() === '') {
@@ -201,24 +422,35 @@ class APIService {
       throw new Error('API地址未配置，请先在设置中配置API地址')
     }
     
-    const model = options.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
-    console.log('使用模型:', model)
+    // 应用全局AI配置
+    const aiParams = getAICallParams()
+    const enhancedPrompt = enhanceUserPrompt(prompt)
+    
+    const model = options.model || aiParams.model || this.config.selectedModel || this.config.defaultModel || 'gpt-3.5-turbo'
+    console.log('模型选择详情:', {
+      传入模型: options.model,
+      全局配置模型: aiParams.model,
+      配置中选中模型: this.config.selectedModel,
+      配置中默认模型: this.config.defaultModel,
+      最终使用模型: model,
+      完整配置: this.config
+    })
     
     // 验证prompt参数
-    if (!prompt || typeof prompt !== 'string') {
+    if (!enhancedPrompt || typeof enhancedPrompt !== 'string') {
       throw new Error('无效的prompt参数')
     }
     
     // 清理prompt内容，确保JSON序列化安全
-    let cleanPrompt = prompt
+    let cleanPrompt = enhancedPrompt
     try {
       // 移除控制字符和不可见字符
-      cleanPrompt = prompt.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+      cleanPrompt = enhancedPrompt.replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
       
       // 确保可以正常JSON序列化
       JSON.stringify({ content: cleanPrompt })
       
-      console.log('Prompt清理完成，原长度:', prompt.length, '清理后长度:', cleanPrompt.length)
+      console.log('Prompt清理完成，原长度:', enhancedPrompt.length, '清理后长度:', cleanPrompt.length)
     } catch (cleanError) {
       console.error('Prompt清理失败:', cleanError)
       throw new Error('提示词包含无法处理的字符，请检查输入内容')
@@ -227,7 +459,7 @@ class APIService {
     // 估算输入token数量（用于记录，无需检查余额）
     const estimatedInputTokens = billingService.estimateTokens(cleanPrompt)
     
-    // 移除maxTokens限制，允许无限制生成
+    // 使用全局配置的maxTokens
     const maxTokens = options.maxTokens || this.config.maxTokens || null
     
     console.log('maxTokens配置检查:', {
@@ -236,16 +468,28 @@ class APIService {
       '最终使用的maxTokens': maxTokens
     })
     
+    // 构建消息数组
+    const messages = []
+    
+    // 添加系统提示词（如果存在）
+    if (aiParams.system_prompt) {
+      messages.push({
+        role: 'system',
+        content: aiParams.system_prompt
+      })
+    }
+    
+    // 添加用户消息
+    messages.push({
+      role: 'user',
+      content: cleanPrompt
+    })
+
     const requestBody = {
       model: model,
-      messages: [
-        {
-          role: 'user',
-          content: cleanPrompt
-        }
-      ],
-      max_tokens: maxTokens || undefined, // 如果为null则不设置限制
-      temperature: options.temperature || this.config.temperature,
+      messages: messages,
+      max_tokens: maxTokens || aiParams.max_tokens || undefined, // 如果为null则不设置限制
+      temperature: options.temperature || aiParams.temperature || this.config.temperature,
       stream: true
     }
 
@@ -262,8 +506,8 @@ class APIService {
         method: 'POST',
         headers,
         body: JSON.stringify(requestBody),
-        // 增加超时设置，避免长时间等待导致的截断
-        signal: AbortSignal.timeout(300000) // 5分钟超时，给更多时间生成长内容
+        // 优化超时设置为 2 分钟，避免用户长时间等待
+        signal: AbortSignal.timeout(this.retryConfig.timeout) // 2分钟超时
       })
       
       console.log('API响应状态:', response.status) // 调试日志
@@ -316,6 +560,7 @@ class APIService {
 
           const chunk = decoder.decode(value, { stream: true })
           console.log('接收到原始chunk:', chunk.length, '字节') // 调试日志
+          console.log('原始chunk内容（前200字符）:', chunk.substring(0, 200)) // 新增：查看实际内容
           
           // 重置无数据超时
           lastProgressTime = Date.now()
@@ -327,9 +572,12 @@ class APIService {
           // 按行分割，最后一行可能不完整，需要保留
           const lines = buffer.split('\n')
           buffer = lines.pop() || '' // 保留最后一行（可能不完整）
+          
+          console.log('分割后的行数:', lines.length) // 新增：查看分割结果
 
           for (const line of lines) {
             const trimmedLine = line.trim()
+            console.log('处理行:', trimmedLine.substring(0, 100)) // 新增：查看每行内容
             
             if (trimmedLine.startsWith('data: ')) {
               const data = trimmedLine.slice(6).trim()
@@ -798,6 +1046,13 @@ ${prompt}
   // 验证API密钥
   async validateAPIKey() {
     try {
+      // 对于中转站，直接返回true，跳过验证
+      // 因为中转站通常不支持/models端点
+      if (this.config.baseURL && !this.config.baseURL.includes('api.openai.com')) {
+        console.log('检测到非OpenAI官方API，跳过密钥验证')
+        return true
+      }
+      
       const url = this.buildURL('/models')
       const headers = this.buildHeaders()
       
@@ -809,11 +1064,30 @@ ${prompt}
       return response.ok
     } catch (error) {
       console.error('API密钥验证失败:', error)
-      return false
+      // 对于中转站，即使验证失败也返回true
+      return true
     }
   }
 
-  // AI生成人物
+  /**
+   * 获取默认角色数据（当AI生成失败时使用）
+   */
+  getDefaultCharacter() {
+    return {
+      name: '未命名角色',
+      age: '未知',
+      occupation: '待设定',
+      appearance: '待补充外貌描述',
+      personality: '待补充性格特点',
+      background: '待补充背景故事',
+      skills: [],
+      traits: ['待补充']
+    }
+  }
+
+  /**
+   * AI生成人物（带重试和错误处理）
+   */
   async generateCharacter(theme, characterType = '') {
     const typeInfo = characterType ? `角色类型：${characterType}` : ''
     const prompt = `请根据主题"${theme}"生成一个小说人物，${typeInfo}
@@ -839,15 +1113,73 @@ ${prompt}
 }`
 
     try {
-      const response = await this.generateTextStream(prompt, {}, null)
-      return JSON.parse(response)
+      // 使用带重试的生成方法
+      const response = await this.retryWithBackoff(
+        async () => await this.generateTextStream(prompt, { type: 'character' }, null),
+        this.retryConfig.maxRetries,
+        this.retryConfig.baseDelay
+      )
+      
+      // 尝试解析 JSON
+      let parsed
+      try {
+        // 首先尝试直接解析
+        parsed = JSON.parse(response)
+      } catch (parseError) {
+        console.warn('JSON 直接解析失败，尝试提取 JSON 块...')
+        
+        // 尝试从响应中提取 JSON 块
+        const jsonMatch = response.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0])
+          } catch (e) {
+            throw new Error('AI 返回的内容格式不正确')
+          }
+        } else {
+          throw new Error('AI 返回的内容不包含有效的 JSON')
+        }
+      }
+      
+      // 验证必需字段
+      const requiredFields = ['name', 'personality']
+      const missingFields = requiredFields.filter(field => !parsed[field])
+      
+      if (missingFields.length > 0) {
+        console.warn('AI 响应缺少必要字段:', missingFields)
+        ElMessage.warning(`生成的角色信息不完整，请手动补充`)
+        // 返回部分数据 + 默认值
+        return { ...this.getDefaultCharacter(), ...parsed }
+      }
+      
+      return parsed
     } catch (error) {
-      console.error('生成人物失败:', error)
-      throw error
+      console.error('生成角色失败:', error)
+      ElMessage.error('生成角色失败，已填充默认值，请手动编辑')
+      
+      // 返回默认对象而非抛出错误，保证用户体验
+      return this.getDefaultCharacter()
     }
   }
 
-  // AI生成世界观设定
+  /**
+   * 获取默认世界观设定（当AI生成失败时使用）
+   */
+  getDefaultWorldSetting() {
+    return {
+      title: '未命名世界观',
+      overview: '待补充概述',
+      description: '待补充详细描述',
+      rules: ['待补充规则'],
+      geography: '待补充地理环境',
+      history: '待补充历史背景',
+      features: ['待补充特色']
+    }
+  }
+
+  /**
+   * AI生成世界观设定（带重试和错误处理）
+   */
   async generateWorldSetting(theme, settingType = '') {
     const typeInfo = settingType ? `设定类型：${settingType}` : ''
     const prompt = `请根据主题"${theme}"生成一个小说世界观设定，${typeInfo}
@@ -872,11 +1204,50 @@ ${prompt}
 }`
 
     try {
-      const response = await this.generateTextStream(prompt, {}, null)
-      return JSON.parse(response)
+      // 使用带重试的生成方法
+      const response = await this.retryWithBackoff(
+        async () => await this.generateTextStream(prompt, { type: 'worldSetting' }, null),
+        this.retryConfig.maxRetries,
+        this.retryConfig.baseDelay
+      )
+      
+      // 尝试解析 JSON
+      let parsed
+      try {
+        parsed = JSON.parse(response)
+      } catch (parseError) {
+        console.warn('JSON 直接解析失败，尝试提取 JSON 块...')
+        
+        // 尝试从响应中提取 JSON 块
+        const jsonMatch = response.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            parsed = JSON.parse(jsonMatch[0])
+          } catch (e) {
+            throw new Error('AI 返回的内容格式不正确')
+          }
+        } else {
+          throw new Error('AI 返回的内容不包含有效的 JSON')
+        }
+      }
+      
+      // 验证必需字段
+      const requiredFields = ['title', 'description']
+      const missingFields = requiredFields.filter(field => !parsed[field])
+      
+      if (missingFields.length > 0) {
+        console.warn('AI 响应缺少必要字段:', missingFields)
+        ElMessage.warning(`生成的世界观信息不完整，请手动补充`)
+        return { ...this.getDefaultWorldSetting(), ...parsed }
+      }
+      
+      return parsed
     } catch (error) {
       console.error('生成世界观设定失败:', error)
-      throw error
+      ElMessage.error('生成世界观失败，已填充默认值，请手动编辑')
+      
+      // 返回默认对象而非抛出错误
+      return this.getDefaultWorldSetting()
     }
   }
 
